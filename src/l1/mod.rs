@@ -24,7 +24,7 @@ use tokio::{spawn, task::JoinHandle, time::sleep};
 use crate::{
     common::BlockInfo,
     config::{Config, SystemConfig},
-    derive::stages::attributes::UserDeposited,
+    optimism::{config::OptimismSystemConfig, deposited_tx::UserDeposited, l1::L1OptimismInfo},
 };
 
 static CONFIG_UPDATE_TOPIC: Lazy<H256> =
@@ -70,12 +70,25 @@ pub struct L1Info {
     pub block_info: L1BlockInfo,
     /// The system config at the block
     pub system_config: SystemConfig,
-    /// User deposits from that block
-    pub user_deposits: Vec<UserDeposited>,
     /// Batcher transactions in block
     pub batcher_transactions: Vec<BatcherTransactionData>,
     /// Whether the block has finalized
     pub finalized: bool,
+
+    pub extra: L1ExtraInfo,
+}
+
+#[derive(Debug)]
+pub enum L1ExtraInfo {
+    Optimism(L1OptimismInfo),
+}
+
+impl L1ExtraInfo {
+    pub fn as_optimism(&self) -> Option<&L1OptimismInfo> {
+        match self {
+            L1ExtraInfo::Optimism(info) => Some(info),
+        }
+    }
 }
 
 /// L1 block info
@@ -211,14 +224,20 @@ impl InnerWatcher {
             let l1_fee_overhead = U256::from(H256::from_slice(&input[196..228]).as_bytes());
             let l1_fee_scalar = U256::from(H256::from_slice(&input[228..260]).as_bytes());
 
-            SystemConfig {
+            OptimismSystemConfig {
                 batch_sender,
                 l1_fee_overhead,
                 l1_fee_scalar,
                 gas_limit: block.gas_limit,
                 // TODO: fetch from contract
-                unsafe_block_signer: config.chain.system_config.unsafe_block_signer,
+                unsafe_block_signer: config
+                    .chain
+                    .system_config
+                    .as_optimism()
+                    .unwrap()
+                    .unsafe_block_signer,
             }
+            .into()
         };
 
         Self {
@@ -261,10 +280,10 @@ impl InnerWatcher {
 
             let l1_info = L1Info::new(
                 &block,
-                user_deposits,
                 self.config.chain.batch_inbox,
                 finalized,
                 self.system_config,
+                L1ExtraInfo::Optimism(L1OptimismInfo { user_deposits }),
             )?;
 
             if l1_info.block_info.number >= self.finalized_block {
@@ -315,17 +334,17 @@ impl InnerWatcher {
                 let mut config = self.system_config;
                 match update {
                     SystemConfigUpdate::BatchSender(addr) => {
-                        config.batch_sender = addr;
+                        config.as_optimism_mut().unwrap().batch_sender = addr;
                     }
                     SystemConfigUpdate::Fees(overhead, scalar) => {
-                        config.l1_fee_overhead = overhead;
-                        config.l1_fee_scalar = scalar;
+                        config.as_optimism_mut().unwrap().l1_fee_overhead = overhead;
+                        config.as_optimism_mut().unwrap().l1_fee_scalar = scalar;
                     }
                     SystemConfigUpdate::Gas(gas) => {
-                        config.gas_limit = gas;
+                        config.as_optimism_mut().unwrap().gas_limit = gas;
                     }
                     SystemConfigUpdate::UnsafeBlockSigner(addr) => {
-                        config.unsafe_block_signer = addr;
+                        config.as_optimism_mut().unwrap().unsafe_block_signer = addr;
                     }
                 }
 
@@ -427,10 +446,10 @@ impl InnerWatcher {
 impl L1Info {
     pub fn new(
         block: &Block<Transaction>,
-        user_deposits: Vec<UserDeposited>,
         batch_inbox: Address,
         finalized: bool,
         system_config: SystemConfig,
+        extra: L1ExtraInfo,
     ) -> Result<Self> {
         let block_number = block
             .number
@@ -449,15 +468,18 @@ impl L1Info {
             mix_hash: block.mix_hash.ok_or(eyre::eyre!("block not included"))?,
         };
 
-        let batcher_transactions =
-            create_batcher_transactions(block, system_config.batch_sender, batch_inbox);
+        let batcher_transactions = create_batcher_transactions(
+            block,
+            system_config.as_optimism().unwrap().batch_sender,
+            batch_inbox,
+        );
 
         Ok(L1Info {
             block_info,
             system_config,
-            user_deposits,
             batcher_transactions,
             finalized,
+            extra,
         })
     }
 }

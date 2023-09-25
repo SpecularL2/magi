@@ -19,6 +19,9 @@ pub mod engine;
 /// Peer to peer networking
 pub mod network;
 
+/// Optimism-specific module
+pub mod optimism;
+
 /// Application telemetry and logging
 pub mod telemetry;
 

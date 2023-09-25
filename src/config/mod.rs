@@ -1,4 +1,4 @@
-use std::{iter, path::PathBuf, process::exit, str::FromStr};
+use std::{path::PathBuf, process::exit, str::FromStr};
 
 use ethers::types::{Address, H256, U256};
 use figment::{
@@ -7,7 +7,10 @@ use figment::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::common::{BlockInfo, Epoch};
+use crate::{
+    common::{BlockInfo, Epoch},
+    optimism::config::OptimismSystemConfig,
+};
 
 /// Sync Mode Specifies how `magi` should sync the L2 chain
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -146,26 +149,41 @@ pub struct ChainConfig {
 
 /// Optimism system config contract values
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct SystemConfig {
-    /// Batch sender address
-    pub batch_sender: Address,
-    /// L2 gas limit
-    pub gas_limit: U256,
-    /// Fee overhead
-    pub l1_fee_overhead: U256,
-    /// Fee scalar
-    pub l1_fee_scalar: U256,
-    /// Sequencer's signer for unsafe blocks
-    pub unsafe_block_signer: Address,
+pub enum SystemConfig {
+    Optimism(OptimismSystemConfig),
+    Specular(),
 }
 
 impl SystemConfig {
-    /// Encoded batch sender as a H256
-    pub fn batcher_hash(&self) -> H256 {
-        let mut batch_sender_bytes = self.batch_sender.as_bytes().to_vec();
-        let mut batcher_hash = iter::repeat(0).take(12).collect::<Vec<_>>();
-        batcher_hash.append(&mut batch_sender_bytes);
-        H256::from_slice(&batcher_hash)
+    pub fn as_optimism(&self) -> Option<&OptimismSystemConfig> {
+        match self {
+            SystemConfig::Optimism(config) => Some(config),
+            _ => None,
+        }
+    }
+
+    pub fn as_optimism_mut(&mut self) -> Option<&mut OptimismSystemConfig> {
+        match self {
+            SystemConfig::Optimism(config) => Some(config),
+            _ => None,
+        }
+    }
+}
+
+impl From<OptimismSystemConfig> for SystemConfig {
+    fn from(value: OptimismSystemConfig) -> Self {
+        Self::Optimism(value)
+    }
+}
+
+impl TryFrom<SystemConfig> for OptimismSystemConfig {
+    type Error = String;
+
+    fn try_from(value: SystemConfig) -> Result<Self, Self::Error> {
+        match value {
+            SystemConfig::Optimism(config) => Ok(config),
+            _ => Err("invalid system config".to_string()),
+        }
     }
 }
 
@@ -231,13 +249,14 @@ impl ChainConfig {
                 ),
                 timestamp: 1686068903,
             },
-            system_config: SystemConfig {
+            system_config: OptimismSystemConfig {
                 batch_sender: addr("0x6887246668a3b87f54deb3b94ba47a6f63f32985"),
                 gas_limit: U256::from(30_000_000),
                 l1_fee_overhead: U256::from(188),
                 l1_fee_scalar: U256::from(684000),
                 unsafe_block_signer: addr("0xAAAA45d9549EDA09E70937013520214382Ffc4A2"),
-            },
+            }
+            .into(),
             batch_inbox: addr("0xff00000000000000000000000000000000000010"),
             deposit_contract: addr("0xbEb5Fc579115071764c7423A4f12eDde41f106Ed"),
             system_config_contract: addr("0x229047fed2591dbec1eF1118d64F7aF3dB9EB290"),
@@ -269,13 +288,14 @@ impl ChainConfig {
                 ),
                 timestamp: 1673550516,
             },
-            system_config: SystemConfig {
+            system_config: OptimismSystemConfig {
                 batch_sender: addr("0x7431310e026b69bfc676c0013e12a1a11411eec9"),
                 gas_limit: U256::from(25_000_000),
                 l1_fee_overhead: U256::from(2100),
                 l1_fee_scalar: U256::from(1000000),
                 unsafe_block_signer: addr("0x715b7219D986641DF9eFd9C7Ef01218D528e19ec"),
-            },
+            }
+            .into(),
             system_config_contract: addr("0xAe851f927Ee40dE99aaBb7461C00f9622ab91d60"),
             batch_inbox: addr("0xff00000000000000000000000000000000000420"),
             deposit_contract: addr("0x5b47E1A08Ea6d985D6649300584e6722Ec4B1383"),
@@ -305,13 +325,14 @@ impl ChainConfig {
                 parent_hash: H256::zero(),
                 timestamp: 1686789347,
             },
-            system_config: SystemConfig {
+            system_config: OptimismSystemConfig {
                 batch_sender: addr("0x5050f69a9786f081509234f1a7f4684b5e5b76c9"),
                 gas_limit: U256::from(30000000),
                 l1_fee_overhead: U256::from(188),
                 l1_fee_scalar: U256::from(684000),
                 unsafe_block_signer: addr("0xAf6E19BE0F9cE7f8afd49a1824851023A8249e8a"),
-            },
+            }
+            .into(),
             batch_inbox: addr("0xff00000000000000000000000000000000008453"),
             deposit_contract: addr("0x49048044d57e1c92a77f79988d21fa8faf74e97e"),
             system_config_contract: addr("0x73a79fab69143498ed3712e519a88a918e1f4072"),
@@ -341,13 +362,14 @@ impl ChainConfig {
                 parent_hash: H256::zero(),
                 timestamp: 1675193616,
             },
-            system_config: SystemConfig {
+            system_config: OptimismSystemConfig {
                 batch_sender: addr("0x2d679b567db6187c0c8323fa982cfb88b74dbcc7"),
                 gas_limit: U256::from(25_000_000),
                 l1_fee_overhead: U256::from(2100),
                 l1_fee_scalar: U256::from(1000000),
                 unsafe_block_signer: addr("0x32a4e99A72c11E9DD3dC159909a2D7BD86C1Bc51"),
-            },
+            }
+            .into(),
             system_config_contract: addr("0xb15eea247ece011c68a614e4a77ad648ff495bc1"),
             batch_inbox: addr("0x8453100000000000000000000000000000000000"),
             deposit_contract: addr("0xe93c8cd0d409341205a592f8c4ac1a5fe5585cfa"),
@@ -445,13 +467,14 @@ impl From<ExternalChainConfig> for ChainConfig {
                 parent_hash: H256::zero(),
                 timestamp: external.genesis.l2_time,
             },
-            system_config: SystemConfig {
+            system_config: OptimismSystemConfig {
                 batch_sender: external.genesis.system_config.batcher_addr,
                 gas_limit: U256::from(external.genesis.system_config.gas_limit),
                 l1_fee_overhead: external.genesis.system_config.overhead.0.into(),
                 l1_fee_scalar: external.genesis.system_config.scalar.0.into(),
                 unsafe_block_signer: Address::zero(),
-            },
+            }
+            .into(),
             batch_inbox: external.batch_inbox_address,
             deposit_contract: external.deposit_contract_address,
             system_config_contract: external.l1_system_config_address,
@@ -520,11 +543,20 @@ mod test {
             chain.l2_genesis.hash,
             hash("0xf85bca315a08237644b06a8350cda3bc0de1593745a91be93daeadb28fb3a32e")
         );
-        assert_eq!(chain.system_config.gas_limit, U256::from(30_000_000));
-        assert_eq!(chain.system_config.l1_fee_overhead, U256::from(2100));
-        assert_eq!(chain.system_config.l1_fee_scalar, U256::from(1_000_000));
         assert_eq!(
-            chain.system_config.batch_sender,
+            chain.system_config.as_optimism().unwrap().gas_limit,
+            U256::from(30_000_000)
+        );
+        assert_eq!(
+            chain.system_config.as_optimism().unwrap().l1_fee_overhead,
+            U256::from(2100)
+        );
+        assert_eq!(
+            chain.system_config.as_optimism().unwrap().l1_fee_scalar,
+            U256::from(1_000_000)
+        );
+        assert_eq!(
+            chain.system_config.as_optimism().unwrap().batch_sender,
             addr("0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc")
         );
         assert_eq!(

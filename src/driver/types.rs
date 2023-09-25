@@ -2,7 +2,8 @@ use ethers::types::{Block, Transaction};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::common::{AttributesDepositedCall, BlockInfo, Epoch};
+use crate::common::{BlockInfo, Epoch};
+use crate::optimism::deposited_call::AttributesDepositedCall;
 
 /// Block info for the current head of the chain
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]

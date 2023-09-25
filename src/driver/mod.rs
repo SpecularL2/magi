@@ -108,8 +108,14 @@ impl Driver<EngineApi> {
 
         let _addr = rpc::run_server(config.clone()).await?;
 
-        let (unsafe_block_signer_sender, unsafe_block_signer_recv) =
-            watch::channel(config.chain.system_config.unsafe_block_signer);
+        let (unsafe_block_signer_sender, unsafe_block_signer_recv) = watch::channel(
+            config
+                .chain
+                .system_config
+                .as_optimism()
+                .unwrap()
+                .unsafe_block_signer,
+        );
 
         let (block_handler, unsafe_block_recv) =
             BlockHandler::new(config.chain.l2_chain_id, unsafe_block_signer_recv);
@@ -275,8 +281,13 @@ impl<E: Engine> Driver<E> {
                     BlockUpdate::NewBlock(l1_info) => {
                         let num = l1_info.block_info.number;
 
-                        self.unsafe_block_signer_sender
-                            .send(l1_info.system_config.unsafe_block_signer)?;
+                        self.unsafe_block_signer_sender.send(
+                            l1_info
+                                .system_config
+                                .as_optimism()
+                                .unwrap()
+                                .unsafe_block_signer,
+                        )?;
 
                         self.pipeline
                             .push_batcher_transactions(l1_info.batcher_transactions.clone(), num)?;
