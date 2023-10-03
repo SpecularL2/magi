@@ -200,7 +200,7 @@ impl InnerWatcher {
         let provider = generate_http_provider(&config.l1_rpc_url);
 
         let system_config = if l2_start_block == config.chain.l2_genesis.number
-            || !config.meta.enable_config_updates
+            || !config.chain.meta.enable_config_updates
         {
             config.chain.system_config
         } else {
@@ -267,12 +267,12 @@ impl InnerWatcher {
         }
 
         if self.current_block <= self.head_block {
-            if self.config.meta.enable_config_updates {
+            if self.config.chain.meta.enable_config_updates {
                 self.update_system_config().await?;
             }
 
             let block = self.get_block(self.current_block).await?;
-            let user_deposits = if self.config.meta.enable_user_deposited_txs {
+            let user_deposits = if self.config.chain.meta.enable_user_deposited_txs {
                 self.get_deposits(self.current_block).await?
             } else {
                 Vec::new()

@@ -72,7 +72,7 @@ pub struct Cli {
 
 impl Cli {
     pub fn to_config(self) -> Config {
-        let chain = match self.network.as_str() {
+        let chain: ChainConfig = match self.network.as_str() {
             "optimism" => ChainConfig::optimism(),
             "optimism-goerli" => ChainConfig::optimism_goerli(),
             "optimism-sepolia" => ChainConfig::optimism_sepolia(),
