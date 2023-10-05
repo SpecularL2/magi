@@ -20,6 +20,8 @@ use crate::{
     derive::stages::attributes::UserDeposited,
 };
 
+pub mod src;
+
 static CONFIG_UPDATE_TOPIC: Lazy<H256> =
     Lazy::new(|| H256::from_slice(&keccak256("ConfigUpdate(uint256,uint8,bytes)")));
 
@@ -285,7 +287,7 @@ impl InnerWatcher {
                 self.config.chain.batch_inbox,
                 finalized,
                 self.system_config,
-                self.config.chain.meta.batcher_tx_src_type.clone(),
+                self.config.chain.meta.batcher_tx_src.clone(),
             )?;
 
             if l1_info.block_info.number >= self.finalized_block {
@@ -457,7 +459,7 @@ impl L1Info {
         batch_inbox: Address,
         finalized: bool,
         system_config: SystemConfig,
-        batcher_tx_extractor: impl BatcherTxExtractor,
+        batcher_tx_extractor: impl src::BatcherTxExtractor,
     ) -> Result<Self> {
         let block_number = block
             .number
@@ -489,16 +491,7 @@ impl L1Info {
     }
 }
 
-pub trait BatcherTxExtractor {
-    fn extract(
-        &self,
-        block: &Block<Transaction>,
-        batch_sender: Address,
-        batch_inbox: Address,
-    ) -> Vec<BatcherTransactionData>;
-}
-
-pub fn create_batcher_transactions_from_eoa(
+pub fn create_batcher_transactions(
     block: &Block<Transaction>,
     batch_sender: Address,
     batch_inbox: Address,
@@ -508,22 +501,6 @@ pub fn create_batcher_transactions_from_eoa(
         .iter()
         .filter(|tx| tx.from == batch_sender && tx.to.map(|to| to == batch_inbox).unwrap_or(false))
         .map(|tx| tx.input.to_vec())
-        .collect()
-}
-
-/// Creates a list of batcher transactions from a block, treating batch_inbox as a contract address, and method ID.
-pub fn create_batcher_transactions_from_contract(
-    block: &Block<Transaction>,
-    batch_sender: Address,
-    batch_inbox: Address,
-    method_id: [u8; 32],
-) -> Vec<BatcherTransactionData> {
-    block
-        .transactions
-        .iter()
-        .filter(|tx| tx.from == batch_sender && tx.to.map(|to| to == batch_inbox).unwrap_or(false))
-        .filter(|tx| tx.input[..4] == method_id)
-        .map(|tx| tx.input[4..].to_vec())
         .collect()
 }
 

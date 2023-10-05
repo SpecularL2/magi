@@ -1,16 +1,14 @@
 use std::{iter, path::PathBuf, process::exit, str::FromStr};
 
-use ethers::types::{Address, Block, Transaction, H256, U256};
+use ethers::types::{Address, H256, U256};
 use figment::{
     providers::{Format, Serialized, Toml},
     Figment,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    common::{BlockInfo, Epoch},
-    l1::{self, BatcherTxExtractor},
-};
+use crate::common::{BlockInfo, Epoch};
+use crate::l1::src;
 
 /// Sync Mode Specifies how `magi` should sync the L2 chain
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -39,34 +37,28 @@ impl FromStr for SyncMode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum BatcherTxDataSourceType {
-    EOA,
-    Contract,
-}
-
-impl BatcherTxExtractor for BatcherTxDataSourceType {
-    fn extract(
-        &self,
-        block: &Block<Transaction>,
-        batch_sender: Address,
-        batch_inbox: Address,
-    ) -> Vec<l1::BatcherTransactionData> {
-        match self {
-            BatcherTxDataSourceType::EOA => {
-                l1::create_batcher_transactions_from_eoa(block, batch_sender, batch_inbox)
-            }
-            BatcherTxDataSourceType::Contract => {
-                l1::create_batcher_transactions_from_contract(
-                    block,
-                    batch_sender,
-                    batch_inbox,
-                    ethers::utils::keccak256("appendTxBatch(bytes)"),
-                )
-            }
-        }
-    }
-}
+// impl BatcherTxExtractor for BatcherTxDataSourceType {
+//     fn extract(
+//         &self,
+//         block: &Block<Transaction>,
+//         batch_sender: Address,
+//         batch_inbox: Address,
+//     ) -> Vec<l1::BatcherTransactionData> {
+//         match self {
+//             EOA => {
+//                 l1::create_batcher_transactions_from_eoa(block, batch_sender, batch_inbox)
+//             }
+//             Contract => {
+//                 l1::create_batcher_transactions_from_contract(
+//                     block,
+//                     batch_sender,
+//                     batch_inbox,
+//                     ethers::utils::keccak256("appendTxBatch(bytes)"),
+//                 )
+//             }
+//         }
+//     }
+// }
 
 /// A system configuration
 #[derive(Debug, Clone, Deserialize)]
@@ -186,7 +178,7 @@ pub struct ChainConfig {
 pub struct ProtocolMetaConfig {
     pub enable_config_updates: bool,
     pub enable_user_deposited_txs: bool,
-    pub batcher_tx_src_type: BatcherTxDataSourceType,
+    pub batcher_tx_src: src::BatcherTxDataSrc,
 }
 
 impl ProtocolMetaConfig {
@@ -194,7 +186,7 @@ impl ProtocolMetaConfig {
         Self {
             enable_config_updates: true,
             enable_user_deposited_txs: true,
-            batcher_tx_src_type: BatcherTxDataSourceType::EOA,
+            batcher_tx_src: src::EOA{}.into(),
         }
     }
 }
