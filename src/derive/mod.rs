@@ -3,7 +3,7 @@ use std::sync::{mpsc, Arc, RwLock};
 use eyre::Result;
 
 use crate::{config::Config, engine::PayloadAttributes};
-use crate::specular::batches::SpecularBatches;
+use crate::specular::stages::{batcher_transactions::SpecularBatcherTransactions, batches::SpecularBatches};
 
 use self::{
     stages::{
@@ -42,13 +42,14 @@ impl Iterator for Pipeline {
 impl Pipeline {
     pub fn new(state: Arc<RwLock<State>>, config: Arc<Config>, seq: u64) -> Result<Self> {
         let (tx, rx) = mpsc::channel();
-        let batcher_transactions = BatcherTransactions::new(rx);
         let batch_iter: Box<dyn PurgeableIterator<Item = Batch>> =
             if config.chain.meta.enable_deposited_txs {
+                let batcher_transactions = BatcherTransactions::new(rx);
                 let channels = Channels::new(batcher_transactions, config.clone());
                 let batches = Batches::new(channels, state.clone(), config.clone());
                 Box::new(batches)
             } else {
+                let batcher_transactions = SpecularBatcherTransactions::new(rx);
                 let batches =
                     SpecularBatches::new(batcher_transactions, state.clone(), config.clone());
                 Box::new(batches)

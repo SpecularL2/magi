@@ -5,10 +5,11 @@ use std::sync::{Arc, RwLock};
 use eyre::Result;
 
 use crate::config::Config;
-use crate::derive::stages::batcher_transactions::BatcherTransaction;
 use crate::derive::stages::batches::Batch;
 use crate::derive::state::State;
 use crate::derive::PurgeableIterator;
+
+use super::batcher_transactions::SpecularBatcherTransaction;
 
 pub struct SpecularBatches<I> {
     /// Mapping of timestamps to batches
@@ -20,7 +21,7 @@ pub struct SpecularBatches<I> {
 
 impl<I> Iterator for SpecularBatches<I>
 where
-    I: Iterator<Item = BatcherTransaction>,
+    I: Iterator<Item = SpecularBatcherTransaction>,
 {
     type Item = Batch;
 
@@ -34,7 +35,7 @@ where
 
 impl<I> PurgeableIterator for SpecularBatches<I>
 where
-    I: PurgeableIterator<Item = BatcherTransaction>,
+    I: PurgeableIterator<Item = SpecularBatcherTransaction>,
 {
     fn purge(&mut self) {
         self.batcher_transaction_iter.purge();
@@ -59,7 +60,7 @@ impl<I> SpecularBatches<I> {
 
 impl<I> SpecularBatches<I>
 where
-    I: Iterator<Item = BatcherTransaction>,
+    I: Iterator<Item = SpecularBatcherTransaction>,
 {
     fn try_next(&mut self) -> Result<Option<Batch>> {
         let _batcher_ransaction = self.batcher_transaction_iter.next();
@@ -67,7 +68,7 @@ where
     }
 }
 
-fn decode_batches(_batcher_ransaction: &BatcherTransaction) -> Result<Vec<Batch>> {
+fn decode_batches(_batcher_ransaction: &SpecularBatcherTransaction) -> Result<Vec<Batch>> {
     let batches = Vec::new();
 
     Ok(batches)
