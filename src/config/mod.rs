@@ -37,29 +37,6 @@ impl FromStr for SyncMode {
     }
 }
 
-// impl BatcherTxExtractor for BatcherTxDataSourceType {
-//     fn extract(
-//         &self,
-//         block: &Block<Transaction>,
-//         batch_sender: Address,
-//         batch_inbox: Address,
-//     ) -> Vec<l1::BatcherTransactionData> {
-//         match self {
-//             EOA => {
-//                 l1::create_batcher_transactions_from_eoa(block, batch_sender, batch_inbox)
-//             }
-//             Contract => {
-//                 l1::create_batcher_transactions_from_contract(
-//                     block,
-//                     batch_sender,
-//                     batch_inbox,
-//                     ethers::utils::keccak256("appendTxBatch(bytes)"),
-//                 )
-//             }
-//         }
-//     }
-// }
-
 /// A system configuration
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
