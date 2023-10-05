@@ -112,7 +112,7 @@ struct InnerWatcher {
     system_config_update: (u64, Option<SystemConfig>),
 }
 
-type BatcherTransactionData = Vec<u8>;
+pub type BatcherTransactionData = Vec<u8>;
 
 impl Drop for ChainWatcher {
     fn drop(&mut self) {
@@ -285,6 +285,7 @@ impl InnerWatcher {
                 self.config.chain.batch_inbox,
                 finalized,
                 self.system_config,
+                self.config.chain.meta.batcher_tx_src_type.clone(),
             )?;
 
             if l1_info.block_info.number >= self.finalized_block {
@@ -456,6 +457,7 @@ impl L1Info {
         batch_inbox: Address,
         finalized: bool,
         system_config: SystemConfig,
+        batcher_tx_extractor: impl BatcherTxExtractor,
     ) -> Result<Self> {
         let block_number = block
             .number
@@ -475,7 +477,7 @@ impl L1Info {
         };
 
         let batcher_transactions =
-            create_batcher_transactions(block, system_config.batch_sender, batch_inbox);
+            batcher_tx_extractor.extract(block, system_config.batch_sender, batch_inbox);
 
         Ok(L1Info {
             block_info,
@@ -487,7 +489,16 @@ impl L1Info {
     }
 }
 
-fn create_batcher_transactions(
+pub trait BatcherTxExtractor {
+    fn extract(
+        &self,
+        block: &Block<Transaction>,
+        batch_sender: Address,
+        batch_inbox: Address,
+    ) -> Vec<BatcherTransactionData>;
+}
+
+pub fn create_batcher_transactions_from_eoa(
     block: &Block<Transaction>,
     batch_sender: Address,
     batch_inbox: Address,
@@ -497,6 +508,22 @@ fn create_batcher_transactions(
         .iter()
         .filter(|tx| tx.from == batch_sender && tx.to.map(|to| to == batch_inbox).unwrap_or(false))
         .map(|tx| tx.input.to_vec())
+        .collect()
+}
+
+/// Creates a list of batcher transactions from a block, treating batch_inbox as a contract address, and method ID.
+pub fn create_batcher_transactions_from_contract(
+    block: &Block<Transaction>,
+    batch_sender: Address,
+    batch_inbox: Address,
+    method_id: [u8; 32],
+) -> Vec<BatcherTransactionData> {
+    block
+        .transactions
+        .iter()
+        .filter(|tx| tx.from == batch_sender && tx.to.map(|to| to == batch_inbox).unwrap_or(false))
+        .filter(|tx| tx.input[..4] == method_id)
+        .map(|tx| tx.input[4..].to_vec())
         .collect()
 }
 
