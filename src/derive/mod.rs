@@ -2,8 +2,10 @@ use std::sync::{mpsc, Arc, RwLock};
 
 use eyre::Result;
 
+use crate::specular::stages::{
+    batcher_transactions::SpecularBatcherTransactions, batches::SpecularBatches,
+};
 use crate::{config::Config, engine::PayloadAttributes};
-use crate::specular::stages::{batcher_transactions::SpecularBatcherTransactions, batches::SpecularBatches};
 
 use self::{
     stages::{
