@@ -262,17 +262,14 @@ impl<E: Engine> Driver<E> {
         while let Ok(attrs) = self.unbuilt_attrs_recv.try_recv() {
             self.future_attrs.push(attrs);
         }
-
         self.future_attrs.retain(|payload| {
-            let unsafe_ts = payload.timestamp.as_u64();
-            let synced_ts = self.engine_driver.unsafe_head.timestamp;
-            unsafe_ts > synced_ts
+            payload.timestamp.as_u64() > self.engine_driver.unsafe_head.timestamp
         });
 
         let next_attrs = self
             .future_attrs
             .iter()
-            .find(|p| p.timestamp.as_u64() > self.engine_driver.unsafe_head.timestamp);
+            .find(|p| p.timestamp.as_u64() == self.engine_driver.get_next_block_ts());
         if let Some(attrs) = next_attrs {
             _ = self.engine_driver.handle_attributes(attrs.clone(), false).await
         }
