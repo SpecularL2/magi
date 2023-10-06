@@ -4,6 +4,7 @@ use core::fmt::Debug;
 use std::cmp::Ordering;
 use std::sync::{Arc, RwLock};
 
+use ethers::types::H256;
 use eyre::Result;
 
 use crate::common::RawTransaction;
@@ -11,6 +12,7 @@ use crate::config::Config;
 use crate::derive::stages::batches::Batch;
 use crate::derive::state::State;
 use crate::derive::PurgeableIterator;
+use crate::l1::L1BlockInfo;
 use ethers::utils::rlp::{DecoderError, Rlp};
 
 use super::batcher_transactions::SpecularBatcherTransaction;
@@ -69,7 +71,7 @@ where
     fn try_next(&mut self) -> Result<Option<Batch>> {
         let batcher_ransaction = self.batcher_transaction_iter.next();
         if let Some(batcher_ransaction) = batcher_ransaction {
-            let batches = decode_batches(&batcher_ransaction)?;
+            let batches = decode_batches(&batcher_ransaction, &self.state)?;
             batches.into_iter().for_each(|batch| {
                 tracing::debug!(
                     "saw batch: t={}, bn={:?}, e={}",
@@ -139,13 +141,22 @@ where
     }
 }
 
-fn decode_batches(batcher_ransaction: &SpecularBatcherTransaction) -> Result<Vec<SpecualrBatchV0>> {
+fn decode_batches(
+    batcher_ransaction: &SpecularBatcherTransaction,
+    state: &RwLock<State>,
+) -> Result<Vec<SpecualrBatchV0>> {
     let mut batches = Vec::new();
+
+    let state = state.read().unwrap();
+    let l1_info = &state
+        .l1_info_by_number(batcher_ransaction.l1_inclusion_block)
+        .unwrap()
+        .block_info;
 
     let rlp = Rlp::new(&batcher_ransaction.tx_batch);
     let first_l2_block_number: u64 = rlp.val_at(0)?;
     for (batch, idx) in rlp.at(1)?.iter().zip(0u64..) {
-        let batch = SpecualrBatchV0::decode(&batch, first_l2_block_number + idx, 0)?; // TODO[zhe]: derive l1 inclusion block
+        let batch = SpecualrBatchV0::decode(&batch, first_l2_block_number + idx, l1_info)?; // TODO[zhe]: derive l1 inclusion block
         batches.push(batch);
     }
 
@@ -166,13 +177,14 @@ pub struct SpecualrBatchV0 {
     pub l2_block_number: u64,
     pub transactions: Vec<RawTransaction>,
     pub l1_inclusion_block: u64,
+    pub l1_inclusion_hash: H256,
 }
 
 impl SpecualrBatchV0 {
     fn decode(
         rlp: &Rlp,
         l2_block_number: u64,
-        l1_inclusion_block: u64,
+        l1_info: &L1BlockInfo,
     ) -> Result<Self, DecoderError> {
         let timestamp = rlp.val_at(0)?;
         let transactions = rlp.list_at(1)?;
@@ -181,7 +193,8 @@ impl SpecualrBatchV0 {
             timestamp,
             l2_block_number,
             transactions,
-            l1_inclusion_block,
+            l1_inclusion_block: l1_info.number,
+            l1_inclusion_hash: l1_info.hash,
         })
     }
 
@@ -194,8 +207,8 @@ impl From<SpecualrBatchV0> for Batch {
     fn from(val: SpecualrBatchV0) -> Self {
         Batch {
             epoch_num: val.l1_inclusion_block, // TODO[zhe]: we simply let the epoch number be the l1 inclusion block number
-            epoch_hash: Default::default(),     // we don't care about epoch hash
-            parent_hash: Default::default(),    // we don't care about parent hash
+            epoch_hash: val.l1_inclusion_hash,
+            parent_hash: Default::default(), // we don't care about parent hash
             timestamp: val.timestamp,
             transactions: val.transactions,
             l1_inclusion_block: val.l1_inclusion_block,

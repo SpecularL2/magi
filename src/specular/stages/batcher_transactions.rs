@@ -43,10 +43,10 @@ impl SpecularBatcherTransactions {
     }
 
     pub fn process_incoming(&mut self) {
-        while let Ok(BatcherTransactionMessage { txs, l1_origin: _ }) = self.transaction_rx.try_recv()
+        while let Ok(BatcherTransactionMessage { txs, l1_origin }) = self.transaction_rx.try_recv()
         {
             for data in txs {
-                let res = SpecularBatcherTransaction::new(&data).map(|tx| {
+                let res = SpecularBatcherTransaction::new(l1_origin, &data).map(|tx| {
                     self.txs.push_back(tx);
                 });
 
@@ -60,12 +60,13 @@ impl SpecularBatcherTransactions {
 
 #[derive(Debug, Clone)]
 pub struct SpecularBatcherTransaction {
+    pub l1_inclusion_block: u64,
     pub version: u64,
     pub tx_batch: Bytes,
 }
 
 impl SpecularBatcherTransaction {
-    pub fn new(data: &[u8]) -> Result<Self> {
+    pub fn new(l1_inclusion_block: u64, data: &[u8]) -> Result<Self> {
         if data.len() < 4 {
             eyre::bail!("invalid transaction data");
         }
@@ -73,7 +74,14 @@ impl SpecularBatcherTransaction {
             eyre::bail!("not appendTxBatch call");
         }
 
-        Self::try_from(data)
+        let (tx_batch_version, tx_batch): AppendTxBatchInput =
+            APPEND_TX_BATCH_ABI.decode("appendTxBatch", data)?;
+
+        Ok(Self {
+            l1_inclusion_block,
+            version: tx_batch_version.as_u64(),
+            tx_batch,
+        })
     }
 }
 
@@ -91,17 +99,3 @@ static APPEND_TX_BATCH_SELECTOR: Lazy<Selector> = Lazy::new(|| {
         .expect("function must be present")
         .short_signature()
 });
-
-impl TryFrom<&[u8]> for SpecularBatcherTransaction {
-    type Error = eyre::Report;
-
-    fn try_from(value: &[u8]) -> Result<Self> {
-        let (tx_batch_version, tx_batch): AppendTxBatchInput =
-            APPEND_TX_BATCH_ABI.decode("appendTxBatch", value)?;
-
-        Ok(Self {
-            version: tx_batch_version.as_u64(),
-            tx_batch,
-        })
-    }
-}
