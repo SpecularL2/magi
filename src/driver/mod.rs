@@ -12,14 +12,16 @@ use eyre::Result;
 use reqwest::Url;
 use tokio::{
     sync::watch::{self, Sender},
+    // sync::mpsc,
     time::sleep,
 };
+use std::sync::mpsc;
 
 use crate::{
     common::{BlockInfo, Epoch},
     config::Config,
     derive::{state::State, Pipeline},
-    engine::{Engine, EngineApi, ExecutionPayload},
+    engine::{Engine, EngineApi, ExecutionPayload, PayloadAttributes},
     l1::{BlockUpdate, ChainWatcher},
     network::{handlers::block_handler::BlockHandler, service::Service},
     rpc,
@@ -46,6 +48,8 @@ pub struct Driver<E: Engine> {
     finalized_l1_block_number: u64,
     /// List of unsafe blocks that have not been applied yet
     future_unsafe_blocks: Vec<ExecutionPayload>,
+    /// List of unsafe payload attrs that have not been built yet
+    future_unbuilt_attrs: Vec<PayloadAttributes>,
     /// State struct to keep track of global state
     state: Arc<RwLock<State>>,
     /// L1 chain watcher
@@ -56,6 +60,8 @@ pub struct Driver<E: Engine> {
     unsafe_block_recv: Receiver<ExecutionPayload>,
     /// Channel to send unsafe signer updated to block handler
     unsafe_block_signer_sender: Sender<Address>,
+    /// Channel to receive payload attributes from
+    unbuilt_attrs_recv: Receiver<PayloadAttributes>,
     /// Networking service
     network_service: Option<Service>,
     /// Channel timeout length
@@ -105,6 +111,9 @@ impl Driver<EngineApi> {
         let (block_handler, unsafe_block_recv) =
             BlockHandler::new(config.chain.l2_chain_id, unsafe_block_signer_recv);
 
+        // TODO: define.
+        let (_, unbuilt_attrs_recv) = mpsc::channel();
+
         let service = Service::new("0.0.0.0:9876".parse()?, config.chain.l2_chain_id)
             .add_handler(Box::new(block_handler));
 
@@ -114,11 +123,13 @@ impl Driver<EngineApi> {
             unfinalized_blocks: Vec::new(),
             finalized_l1_block_number: 0,
             future_unsafe_blocks: Vec::new(),
+            future_unbuilt_attrs: Vec::new(),
             state,
             chain_watcher,
             shutdown_recv,
             unsafe_block_recv,
             unsafe_block_signer_sender,
+            unbuilt_attrs_recv,
             network_service: Some(service),
             channel_timeout: config.chain.channel_timeout,
         })
@@ -165,6 +176,7 @@ impl<E: Engine> Driver<E> {
     async fn advance(&mut self) -> Result<()> {
         self.advance_safe_head().await?;
         self.advance_unsafe_head().await?;
+        self.advance_unsafe_head_by_attributes().await?;
 
         self.update_finalized();
         self.update_metrics();
@@ -190,7 +202,7 @@ impl<E: Engine> Driver<E> {
                 .ok_or(eyre::eyre!("attributes without seq number"))?;
 
             self.engine_driver
-                .handle_attributes(next_attributes)
+                .handle_attributes(next_attributes, true)
                 .await?;
 
             tracing::info!(
@@ -239,6 +251,30 @@ impl<E: Engine> Driver<E> {
 
         if let Some(payload) = next_unsafe_payload {
             _ = self.engine_driver.handle_unsafe_payload(payload).await;
+        }
+
+        Ok(())
+    }
+
+    /// Tries to process the next unbuilt payload attributes, building on the current forkchoice.
+    /// Currently only allows attributes with a timestamp greater than the current unsafe head.
+    async fn advance_unsafe_head_by_attributes(&mut self) -> Result<()> {
+        while let Ok(attrs) = self.unbuilt_attrs_recv.try_recv() {
+            self.future_unbuilt_attrs.push(attrs);
+        }
+
+        self.future_unsafe_blocks.retain(|payload| {
+            let unsafe_ts = payload.timestamp.as_u64();
+            let synced_ts = self.engine_driver.unsafe_head.timestamp;
+            unsafe_ts > synced_ts
+        });
+
+        let next_unbuilt_attrs = self
+            .future_unbuilt_attrs
+            .iter()
+            .find(|p| p.timestamp.as_u64() > self.engine_driver.unsafe_head.timestamp);
+        if let Some(attrs) = next_unbuilt_attrs {
+            _ = self.engine_driver.handle_attributes(attrs.clone(), false)
         }
 
         Ok(())

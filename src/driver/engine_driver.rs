@@ -34,7 +34,7 @@ pub struct EngineDriver<E: Engine> {
 }
 
 impl<E: Engine> EngineDriver<E> {
-    pub async fn handle_attributes(&mut self, attributes: PayloadAttributes) -> Result<()> {
+    pub async fn handle_attributes(&mut self, attributes: PayloadAttributes, update_safe: bool) -> Result<()> {
         let block: Option<Block<Transaction>> = self.block_at(attributes.timestamp.as_u64()).await;
 
         if let Some(block) = block {
@@ -42,10 +42,10 @@ impl<E: Engine> EngineDriver<E> {
                 self.skip_attributes(attributes, block).await
             } else {
                 self.unsafe_head = self.safe_head;
-                self.process_attributes(attributes).await
+                self.process_attributes(attributes, update_safe).await
             }
         } else {
-            self.process_attributes(attributes).await
+            self.process_attributes(attributes, update_safe).await
         }
     }
 
@@ -82,7 +82,7 @@ impl<E: Engine> EngineDriver<E> {
             .is_ok()
     }
 
-    async fn process_attributes(&mut self, attributes: PayloadAttributes) -> Result<()> {
+    async fn process_attributes(&mut self, attributes: PayloadAttributes, update_safe: bool) -> Result<()> {
         let new_epoch = *attributes.epoch.as_ref().unwrap();
 
         let payload = self.build_payload(attributes).await?;
@@ -95,7 +95,11 @@ impl<E: Engine> EngineDriver<E> {
         };
 
         self.push_payload(payload).await?;
-        self.update_safe_head(new_head, new_epoch, true)?;
+        if update_safe {
+            self.update_safe_head(new_head, new_epoch, true)?;
+        } else {
+            self.unsafe_head = new_head;
+        }
         self.update_forkchoice().await?;
 
         Ok(())
