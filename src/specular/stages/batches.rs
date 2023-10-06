@@ -150,7 +150,7 @@ fn decode_batches(
     let state = state.read().unwrap();
     let l1_info = &state
         .l1_info_by_number(batcher_ransaction.l1_inclusion_block)
-        .unwrap()
+        .expect("L1 block must been seen when batcher transaction is decoded")
         .block_info;
 
     let rlp = Rlp::new(&batcher_ransaction.tx_batch);
@@ -208,7 +208,7 @@ impl From<SpecualrBatchV0> for Batch {
         Batch {
             epoch_num: val.l1_inclusion_block, // TODO[zhe]: we simply let the epoch number be the l1 inclusion block number
             epoch_hash: val.l1_inclusion_hash,
-            parent_hash: Default::default(), // we don't care about parent hash
+            parent_hash: Default::default(),   // we don't care about parent hash
             timestamp: val.timestamp,
             transactions: val.transactions,
             l1_inclusion_block: val.l1_inclusion_block,
