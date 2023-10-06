@@ -7,6 +7,7 @@ use ethers::{
     utils::keccak256,
 };
 use eyre::Result;
+use tokio::time::{sleep, Duration};
 
 use crate::{
     common::{BlockInfo, Epoch},
@@ -120,6 +121,7 @@ impl<E: Engine> EngineDriver<E> {
 
     async fn build_payload(&self, attributes: PayloadAttributes) -> Result<ExecutionPayload> {
         let forkchoice = self.create_forkchoice_state();
+        let no_tx_pool = attributes.no_tx_pool;
 
         let update = self
             .engine
@@ -134,6 +136,10 @@ impl<E: Engine> EngineDriver<E> {
             .payload_id
             .ok_or(eyre::eyre!("engine did not return payload id"))?;
 
+        if !no_tx_pool {
+            // Wait before fetching the payload to give the engine time to build it.
+            sleep(Duration::from_secs(self.blocktime)).await
+        }
         self.engine.get_payload(id).await
     }
 

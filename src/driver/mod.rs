@@ -49,7 +49,7 @@ pub struct Driver<E: Engine> {
     /// List of unsafe blocks that have not been applied yet
     future_unsafe_blocks: Vec<ExecutionPayload>,
     /// List of unsafe payload attrs that have not been built yet
-    future_unbuilt_attrs: Vec<PayloadAttributes>,
+    future_attrs: Vec<PayloadAttributes>,
     /// State struct to keep track of global state
     state: Arc<RwLock<State>>,
     /// L1 chain watcher
@@ -123,7 +123,7 @@ impl Driver<EngineApi> {
             unfinalized_blocks: Vec::new(),
             finalized_l1_block_number: 0,
             future_unsafe_blocks: Vec::new(),
-            future_unbuilt_attrs: Vec::new(),
+            future_attrs: Vec::new(),
             state,
             chain_watcher,
             shutdown_recv,
@@ -260,21 +260,21 @@ impl<E: Engine> Driver<E> {
     /// Currently only allows attributes with a timestamp greater than the current unsafe head.
     async fn advance_unsafe_head_by_attributes(&mut self) -> Result<()> {
         while let Ok(attrs) = self.unbuilt_attrs_recv.try_recv() {
-            self.future_unbuilt_attrs.push(attrs);
+            self.future_attrs.push(attrs);
         }
 
-        self.future_unsafe_blocks.retain(|payload| {
+        self.future_attrs.retain(|payload| {
             let unsafe_ts = payload.timestamp.as_u64();
             let synced_ts = self.engine_driver.unsafe_head.timestamp;
             unsafe_ts > synced_ts
         });
 
-        let next_unbuilt_attrs = self
-            .future_unbuilt_attrs
+        let next_attrs = self
+            .future_attrs
             .iter()
             .find(|p| p.timestamp.as_u64() > self.engine_driver.unsafe_head.timestamp);
-        if let Some(attrs) = next_unbuilt_attrs {
-            _ = self.engine_driver.handle_attributes(attrs.clone(), false)
+        if let Some(attrs) = next_attrs {
+            _ = self.engine_driver.handle_attributes(attrs.clone(), false).await
         }
 
         Ok(())
