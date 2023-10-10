@@ -109,6 +109,7 @@ mod tests {
                 checkpoint_sync_url: None,
                 rpc_port: 9545,
                 devnet: false,
+                local_sequencer: Default::default(),
             });
 
             let mut chain_watcher = ChainWatcher::new(

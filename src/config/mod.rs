@@ -56,6 +56,26 @@ pub struct Config {
     pub rpc_port: u16,
     /// The devnet mode.
     pub devnet: bool,
+    /// The local sequencer config.
+    pub local_sequencer: LocalSequencerConfig,
+}
+
+/// A local sequencer configuration
+#[derive(Debug, Clone, Deserialize)]
+pub struct LocalSequencerConfig {
+    pub enabled: bool,
+    pub suggested_fee_recipient: Address,
+    pub max_safe_lag: u64,
+}
+
+impl Default for LocalSequencerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            suggested_fee_recipient: Address::zero(),
+            max_safe_lag: 0,
+        }
+    }
 }
 
 impl Config {
@@ -154,6 +174,7 @@ pub struct ChainConfig {
 pub struct ProtocolMetaConfig {
     pub enable_config_updates: bool,
     pub enable_user_deposited_txs: bool,
+    pub enable_full_derivation: bool,
 }
 
 impl ProtocolMetaConfig {
@@ -161,6 +182,7 @@ impl ProtocolMetaConfig {
         Self {
             enable_config_updates: true,
             enable_user_deposited_txs: true,
+            enable_full_derivation: true,
         }
     }
 }

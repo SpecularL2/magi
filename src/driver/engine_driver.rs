@@ -35,8 +35,6 @@ pub struct EngineDriver<E: Engine> {
 }
 
 impl<E: Engine> EngineDriver<E> {
-    pub fn get_next_block_ts(&self) -> u64 { self.unsafe_head.timestamp + self.blocktime }
-
     pub async fn handle_attributes(&mut self, attributes: PayloadAttributes, update_safe: bool) -> Result<()> {
         let block: Option<Block<Transaction>> = self.block_at(attributes.timestamp.as_u64()).await;
 

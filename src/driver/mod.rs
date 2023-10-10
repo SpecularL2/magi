@@ -12,16 +12,14 @@ use eyre::Result;
 use reqwest::Url;
 use tokio::{
     sync::watch::{self, Sender},
-    // sync::mpsc,
     time::sleep,
 };
-use std::sync::mpsc;
 
 use crate::{
     common::{BlockInfo, Epoch},
     config::Config,
     derive::{state::State, Pipeline},
-    engine::{Engine, EngineApi, ExecutionPayload, PayloadAttributes},
+    engine::{Engine, EngineApi, ExecutionPayload},
     l1::{BlockUpdate, ChainWatcher},
     network::{handlers::block_handler::BlockHandler, service::Service},
     rpc,
@@ -33,11 +31,12 @@ use self::engine_driver::EngineDriver;
 mod engine_driver;
 mod info;
 mod types;
+pub mod sequencing;
 pub use types::*;
 
 /// Driver is responsible for advancing the execution node by feeding
 /// the derived chain into the engine API
-pub struct Driver<E: Engine> {
+pub struct Driver<E: Engine, S: sequencing::SequencingSource> {
     /// The derivation pipeline
     pipeline: Pipeline,
     /// The engine driver
@@ -48,8 +47,6 @@ pub struct Driver<E: Engine> {
     finalized_l1_block_number: u64,
     /// List of unsafe blocks that have not been applied yet
     future_unsafe_blocks: Vec<ExecutionPayload>,
-    /// List of unsafe payload attrs that have not been built yet
-    future_attrs: Vec<PayloadAttributes>,
     /// State struct to keep track of global state
     state: Arc<RwLock<State>>,
     /// L1 chain watcher
@@ -60,16 +57,16 @@ pub struct Driver<E: Engine> {
     unsafe_block_recv: Receiver<ExecutionPayload>,
     /// Channel to send unsafe signer updated to block handler
     unsafe_block_signer_sender: Sender<Address>,
-    /// Channel to receive payload attributes from
-    unbuilt_attrs_recv: Receiver<PayloadAttributes>,
     /// Networking service
     network_service: Option<Service>,
     /// Channel timeout length
     channel_timeout: u64,
+    /// Local sequencing source
+    sequencing_source: S,
 }
 
-impl Driver<EngineApi> {
-    pub async fn from_config(config: Config, shutdown_recv: watch::Receiver<bool>) -> Result<Self> {
+impl<S: sequencing::SequencingSource> Driver<EngineApi, S> {
+    pub async fn from_config(config: Config, shutdown_recv: watch::Receiver<bool>, sequencing_src: S) -> Result<Self> {
         let client = reqwest::ClientBuilder::new()
             .timeout(Duration::from_secs(5))
             .build()?;
@@ -111,9 +108,6 @@ impl Driver<EngineApi> {
         let (block_handler, unsafe_block_recv) =
             BlockHandler::new(config.chain.l2_chain_id, unsafe_block_signer_recv);
 
-        // TODO: define.
-        let (_, unbuilt_attrs_recv) = mpsc::channel();
-
         let service = Service::new("0.0.0.0:9876".parse()?, config.chain.l2_chain_id)
             .add_handler(Box::new(block_handler));
 
@@ -123,20 +117,19 @@ impl Driver<EngineApi> {
             unfinalized_blocks: Vec::new(),
             finalized_l1_block_number: 0,
             future_unsafe_blocks: Vec::new(),
-            future_attrs: Vec::new(),
             state,
             chain_watcher,
             shutdown_recv,
             unsafe_block_recv,
             unsafe_block_signer_sender,
-            unbuilt_attrs_recv,
             network_service: Some(service),
             channel_timeout: config.chain.channel_timeout,
+            sequencing_source: sequencing_src,
         })
     }
 }
 
-impl<E: Engine> Driver<E> {
+impl<E: Engine, S: sequencing::SequencingSource> Driver<E, S> {
     /// Runs the Driver
     pub async fn start(&mut self) -> Result<()> {
         self.await_engine_ready().await;
@@ -257,23 +250,14 @@ impl<E: Engine> Driver<E> {
     }
 
     /// Tries to process the next unbuilt payload attributes, building on the current forkchoice.
-    /// Currently only allows attributes with a timestamp greater than the current unsafe head.
+    /// Only allows attributes with a timestamp greater than the current unsafe head.
     async fn advance_unsafe_head_by_attributes(&mut self) -> Result<()> {
-        while let Ok(attrs) = self.unbuilt_attrs_recv.try_recv() {
-            self.future_attrs.push(attrs);
-        }
-        self.future_attrs.retain(|payload| {
-            payload.timestamp.as_u64() > self.engine_driver.unsafe_head.timestamp
-        });
-
-        let next_attrs = self
-            .future_attrs
-            .iter()
-            .find(|p| p.timestamp.as_u64() == self.engine_driver.get_next_block_ts());
-        if let Some(attrs) = next_attrs {
+        if let Some(attrs) = self.sequencing_source.get_next_attributes(
+            self.engine_driver.unsafe_head, &self.state
+        ) {
+            // TODO: handle recoverable errors if any.
             _ = self.engine_driver.handle_attributes(attrs.clone(), false).await
         }
-
         Ok(())
     }
 
@@ -396,7 +380,7 @@ mod tests {
     use eyre::Result;
     use tokio::sync::watch::channel;
 
-    use crate::config::{ChainConfig, CliConfig};
+    use crate::{config::{ChainConfig, CliConfig}, driver::sequencing::NoOp};
 
     use super::*;
 
@@ -424,7 +408,7 @@ mod tests {
             let provider = Provider::<Http>::try_from(config.l2_rpc_url.clone())?;
             let finalized_block = provider.get_block(block_id).await?.unwrap();
 
-            let driver = Driver::from_config(config, shutdown_recv).await?;
+            let driver = Driver::from_config(config, shutdown_recv, NoOp{}).await?;
 
             assert_eq!(
                 driver.engine_driver.finalized_head.number,
