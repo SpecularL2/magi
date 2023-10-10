@@ -63,12 +63,7 @@ impl Attributes {
         tracing::debug!("attributes derived from block {}", batch.epoch_num);
         tracing::debug!("batch epoch hash {:?}", batch.epoch_hash);
 
-        // Only update sequence number if deposited txs are enabled
-        // In specular, we don't care about epoch hash for now
-        // TODO[zhe]: reason it
-        if self.config.chain.meta.enable_deposited_txs {
-            self.update_sequence_number(batch.epoch_hash);
-        }
+        self.update_sequence_number(batch.epoch_hash);
 
         let state = self.state.read().unwrap();
         let l1_info = state.l1_info_by_hash(batch.epoch_hash).unwrap();

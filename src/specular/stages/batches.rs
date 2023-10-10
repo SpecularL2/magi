@@ -19,7 +19,7 @@ use super::batcher_transactions::SpecularBatcherTransaction;
 
 pub struct SpecularBatches<I> {
     /// Mapping of timestamps to batches
-    batches: BTreeMap<u64, SpecualrBatchV0>,
+    batches: BTreeMap<u64, SpecularBatchV0>,
     batcher_transaction_iter: I,
     state: Arc<RwLock<State>>,
     config: Arc<Config>,
@@ -69,9 +69,9 @@ where
     I: Iterator<Item = SpecularBatcherTransaction>,
 {
     fn try_next(&mut self) -> Result<Option<Batch>> {
-        let batcher_ransaction = self.batcher_transaction_iter.next();
-        if let Some(batcher_ransaction) = batcher_ransaction {
-            let batches = decode_batches(&batcher_ransaction, &self.state)?;
+        let batcher_transaction = self.batcher_transaction_iter.next();
+        if let Some(batcher_transaction) = batcher_transaction {
+            let batches = decode_batches(&batcher_transaction, &self.state)?;
             batches.into_iter().for_each(|batch| {
                 tracing::debug!(
                     "saw batch: t={}, bn={:?}, e={}",
@@ -111,7 +111,7 @@ where
         Ok(batch.map(|batch| batch.into()))
     }
 
-    fn batch_status(&self, batch: &SpecualrBatchV0) -> BatchStatus {
+    fn batch_status(&self, batch: &SpecularBatchV0) -> BatchStatus {
         let state = self.state.read().unwrap();
         let head = state.safe_head;
         let next_timestamp = head.timestamp + self.config.chain.blocktime;
@@ -144,7 +144,7 @@ where
 fn decode_batches(
     batcher_ransaction: &SpecularBatcherTransaction,
     state: &RwLock<State>,
-) -> Result<Vec<SpecualrBatchV0>> {
+) -> Result<Vec<SpecularBatchV0>> {
     let mut batches = Vec::new();
 
     let state = state.read().unwrap();
@@ -156,7 +156,7 @@ fn decode_batches(
     let rlp = Rlp::new(&batcher_ransaction.tx_batch);
     let first_l2_block_number: u64 = rlp.val_at(0)?;
     for (batch, idx) in rlp.at(1)?.iter().zip(0u64..) {
-        let batch = SpecualrBatchV0::decode(&batch, first_l2_block_number + idx, l1_info)?; // TODO[zhe]: derive l1 inclusion block
+        let batch = SpecularBatchV0::decode(&batch, first_l2_block_number + idx, l1_info)?; // TODO[zhe]: derive l1 inclusion block
         batches.push(batch);
     }
 
@@ -172,7 +172,7 @@ enum BatchStatus {
 }
 
 #[derive(Debug, Clone)]
-pub struct SpecualrBatchV0 {
+pub struct SpecularBatchV0 {
     pub timestamp: u64,
     pub l2_block_number: u64,
     pub transactions: Vec<RawTransaction>,
@@ -180,7 +180,7 @@ pub struct SpecualrBatchV0 {
     pub l1_inclusion_hash: H256,
 }
 
-impl SpecualrBatchV0 {
+impl SpecularBatchV0 {
     fn decode(
         rlp: &Rlp,
         l2_block_number: u64,
@@ -203,8 +203,8 @@ impl SpecualrBatchV0 {
     }
 }
 
-impl From<SpecualrBatchV0> for Batch {
-    fn from(val: SpecualrBatchV0) -> Self {
+impl From<SpecularBatchV0> for Batch {
+    fn from(val: SpecularBatchV0) -> Self {
         Batch {
             epoch_num: val.l1_inclusion_block, // TODO[zhe]: we simply let the epoch number be the l1 inclusion block number
             epoch_hash: val.l1_inclusion_hash,
