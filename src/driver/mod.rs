@@ -20,7 +20,7 @@ use crate::{
     config::Config,
     derive::{state::State, Pipeline},
     engine::{Engine, EngineApi, ExecutionPayload},
-    l1::{BlockUpdate, ChainWatcher},
+    l1::{BlockUpdate, ChainWatcher, L1BlockInfo},
     network::{handlers::block_handler::BlockHandler, service::Service},
     rpc,
     telemetry::metrics,
@@ -252,9 +252,19 @@ impl<E: Engine, S: sequencing::SequencingSource> Driver<E, S> {
     /// Tries to process the next unbuilt payload attributes, building on the current forkchoice.
     /// Only allows attributes with a timestamp greater than the current unsafe head.
     async fn advance_unsafe_head_by_attributes(&mut self) -> Result<()> {
+        // TODO: fix mutex acquired in async
+        let state = self.state.read().unwrap();
+        // TODO: get unsafe_head_origin
+        let unsafe_head_origin = L1BlockInfo{
+            number: 0,
+            hash: Default::default(),
+            timestamp: 0,
+            base_fee: Default::default(),
+            mix_hash: Default::default(),
+        };
         if let Some(attrs) = self.sequencing_source.get_next_attributes(
-            self.engine_driver.unsafe_head, &self.state
-        ) {
+            self.engine_driver.unsafe_head, unsafe_head_origin, &state
+        ).await {
             // TODO: handle recoverable errors if any.
             _ = self.engine_driver.handle_attributes(attrs.clone(), false).await
         }

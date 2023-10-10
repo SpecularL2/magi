@@ -186,7 +186,8 @@ impl Runner {
                 panic!("not currently supported") // TODO: Builder that conforms to optimism's full derivation protocol.
             }
             (true, false) => {
-                self.start_driver_for_real(specular::sequencing::AttributesBuilder::new(self.config.clone())).await?
+                let sequencing_src = specular::sequencing::AttributesBuilder::new(self.config.clone());
+                self.start_driver_for_real(sequencing_src).await?
             }
             _ => { self.start_driver_for_real(NoOp{}).await? }
         };
