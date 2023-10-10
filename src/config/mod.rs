@@ -173,7 +173,7 @@ pub struct ChainConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProtocolMetaConfig {
     pub enable_config_updates: bool,
-    pub enable_user_deposited_txs: bool,
+    pub enable_deposited_txs: bool,
     pub enable_full_derivation: bool,
 }
 
@@ -181,7 +181,7 @@ impl ProtocolMetaConfig {
     pub fn optimism() -> Self {
         Self {
             enable_config_updates: true,
-            enable_user_deposited_txs: true,
+            enable_deposited_txs: true,
             enable_full_derivation: true,
         }
     }
