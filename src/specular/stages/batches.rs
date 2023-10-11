@@ -17,6 +17,10 @@ use ethers::utils::rlp::{DecoderError, Rlp};
 
 use super::batcher_transactions::SpecularBatcherTransaction;
 
+/// The second stage of Specular's derive pipeline.
+/// This stage consumes [SpecularBatcherTransaction]s and produces [SpecularBatchV0]s.
+/// One [SpecularBatcherTransaction] may produce multiple [SpecularBatchV0]s.
+/// [SpecularBatchV0]s are returned in order of their timestamps.
 pub struct SpecularBatches<I> {
     /// Mapping of timestamps to batches
     batches: BTreeMap<u64, SpecularBatchV0>,
@@ -68,6 +72,8 @@ impl<I> SpecularBatches<I>
 where
     I: Iterator<Item = SpecularBatcherTransaction>,
 {
+    /// This function tries to decode batches from the next [SpecularBatcherTransaction] and
+    /// returns the first valid batch if possible.
     fn try_next(&mut self) -> Result<Option<Batch>> {
         let batcher_transaction = self.batcher_transaction_iter.next();
         if let Some(batcher_transaction) = batcher_transaction {
@@ -96,9 +102,6 @@ where
                         let timestamp = batch.timestamp;
                         self.batches.remove(&timestamp);
                     }
-                    BatchStatus::Future | BatchStatus::Undecided => {
-                        break None;
-                    }
                 }
             } else {
                 break None;
@@ -111,6 +114,7 @@ where
         Ok(batch.map(|batch| batch.into()))
     }
 
+    /// Determine whether a batch is valid.
     fn batch_status(&self, batch: &SpecularBatchV0) -> BatchStatus {
         let state = self.state.read().unwrap();
         let head = state.safe_head;
@@ -119,8 +123,7 @@ where
         // check timestamp range
         // TODO[zhe]: do we need this?
         match batch.timestamp.cmp(&next_timestamp) {
-            Ordering::Greater => return BatchStatus::Future,
-            Ordering::Less => return BatchStatus::Drop,
+            Ordering::Greater | Ordering::Less => return BatchStatus::Drop,
             Ordering::Equal => (),
         }
 
@@ -141,6 +144,7 @@ where
     }
 }
 
+/// Decode [SpecularBatchV0] from a [SpecularBatcherTransaction].
 fn decode_batches(
     batcher_ransaction: &SpecularBatcherTransaction,
     state: &RwLock<State>,
@@ -167,10 +171,9 @@ fn decode_batches(
 enum BatchStatus {
     Drop,
     Accept,
-    Undecided,
-    Future,
 }
 
+/// A batch of transactions with block contexts, which is essentially an L2 block.
 #[derive(Debug, Clone)]
 pub struct SpecularBatchV0 {
     pub timestamp: u64,
