@@ -1,7 +1,7 @@
 use async_trait::async_trait;
+use eyre::Result;
 
-use crate::{common::BlockInfo, engine::PayloadAttributes, derive::state::State, l1::L1BlockInfo};
-
+use crate::{common::BlockInfo, engine::PayloadAttributes, l1::L1BlockInfo};
 
 #[async_trait]
 pub trait SequencingSource {
@@ -9,10 +9,10 @@ pub trait SequencingSource {
     /// If no new payload should be built yet, returns None.
     async fn get_next_attributes(
         &self,
+        safe_l2_head: BlockInfo,
         parent_l2_block: BlockInfo,
-        parent_l2_block_epoch: L1BlockInfo,
-        state: &State,
-    ) -> Option<PayloadAttributes>;
+        parent_l2_block_origin: L1BlockInfo,
+    ) -> Result<Option<PayloadAttributes>>;
 }
 
 pub struct NoOp;
@@ -20,8 +20,10 @@ pub struct NoOp;
 impl SequencingSource for NoOp {
     async fn get_next_attributes(
         &self,
+        _safe_l2_head: BlockInfo,
         _parent_l2_block: BlockInfo,
-        _parent_l2_block_epoch: L1BlockInfo,
-        _state: &State,
-    ) -> Option<PayloadAttributes> { None }
+        _parent_l2_block_origin: L1BlockInfo,
+    ) -> Result<Option<PayloadAttributes>> {
+        Ok(None)
+    }
 }

@@ -35,7 +35,11 @@ pub struct EngineDriver<E: Engine> {
 }
 
 impl<E: Engine> EngineDriver<E> {
-    pub async fn handle_attributes(&mut self, attributes: PayloadAttributes, update_safe: bool) -> Result<()> {
+    pub async fn handle_attributes(
+        &mut self,
+        attributes: PayloadAttributes,
+        update_safe: bool,
+    ) -> Result<()> {
         let block: Option<Block<Transaction>> = self.block_at(attributes.timestamp.as_u64()).await;
 
         if let Some(block) = block {
@@ -83,7 +87,11 @@ impl<E: Engine> EngineDriver<E> {
             .is_ok()
     }
 
-    async fn process_attributes(&mut self, attributes: PayloadAttributes, update_safe: bool) -> Result<()> {
+    async fn process_attributes(
+        &mut self,
+        attributes: PayloadAttributes,
+        update_safe: bool,
+    ) -> Result<()> {
         let new_epoch = *attributes.epoch.as_ref().unwrap();
 
         let payload = self.build_payload(attributes).await?;

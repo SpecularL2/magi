@@ -1,10 +1,20 @@
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use ethers::{types::{U64, H256, Block}, providers::{Provider, Http, RetryClient, HttpRateLimitRetryPolicy, Middleware}};
+use ethers::{
+    providers::{Http, HttpRateLimitRetryPolicy, Middleware, Provider, RetryClient},
+    types::{Block, H256, U64},
+};
+use eyre::Result;
 use reqwest::Url;
 
-use crate::{config::Config, engine::PayloadAttributes, common::{BlockInfo, RawTransaction}, derive::state::State, driver::sequencing::SequencingSource, l1::L1BlockInfo};
+use crate::{
+    common::{BlockInfo, RawTransaction},
+    config::Config,
+    driver::sequencing::SequencingSource,
+    engine::PayloadAttributes,
+    l1::L1BlockInfo,
+};
 
 pub struct AttributesBuilder {
     config: Config,
@@ -16,28 +26,71 @@ impl AttributesBuilder {
         let url = config.l1_rpc_url.clone();
         Self {
             config,
-            provider: generate_http_provider(&url)
+            provider: generate_http_provider(&url),
         }
     }
 
     /// Returns true iff:
     /// 1. The parent l2 block is within the max safe lag.
     /// 2. The next timestamp isn't in the future.
-    fn is_ready(&self, parent_l2_block: BlockInfo, state: &State) -> bool { 
-        state.safe_head.number + self.config.local_sequencer.max_safe_lag > parent_l2_block.number &&
-        self.next_timestamp(parent_l2_block.timestamp) <= unix_now()
+    fn is_ready(&self, parent_l2_block: BlockInfo, safe_l2_head: BlockInfo) -> bool {
+        safe_l2_head.number + self.config.local_sequencer.max_safe_lag > parent_l2_block.number
+            && self.next_timestamp(parent_l2_block.timestamp) <= unix_now()
     }
 
-    fn next_timestamp(&self, parent_block_timestamp: u64) -> u64 { parent_block_timestamp + self.config.chain.blocktime }
+    /// Returns the next l2 block timestamp, given the `parent_block_timestamp``.
+    fn next_timestamp(&self, parent_block_timestamp: u64) -> u64 {
+        parent_block_timestamp + self.config.chain.blocktime
+    }
 
-    fn next_randao(&self, next_block_epoch: L1BlockInfo) -> H256 { next_block_epoch.mix_hash }
+    /// Returns the next l2 block randao, reusing that of the `next_origin`.
+    fn next_randao(&self, next_origin: L1BlockInfo) -> H256 {
+        next_origin.mix_hash
+    }
 
-    async fn find_next_origin(&self, _l2_block: BlockInfo, l2_block_origin: L1BlockInfo) -> L1BlockInfo {
-        // let past_seq_drift = l2_block.timestamp + self.config.chain.blocktime > self.config.chain.max_seq_drift;
-        let next = self.provider.get_block(l2_block_origin.number + 1).await;
-        match next {
-            Ok(Some(next)) => L1BlockInfo::from(next),
-            _ => l2_block_origin
+    /// Returns the drift bound on the next l2 block's timestamp.
+    /// Can be assumed to always be larger than the L1 block time.
+    fn next_drift_bound(&self, curr_origin: &L1BlockInfo) -> u64 {
+        curr_origin.timestamp + self.config.chain.max_seq_drift
+    }
+
+    /// Finds the origin of the next L2 block: either the current origin or the next, if sufficient time has passed.
+    async fn find_next_origin(
+        &self,
+        curr_l2_block: BlockInfo,
+        curr_origin: L1BlockInfo,
+    ) -> Result<L1BlockInfo> {
+        let next_l2_ts = self.next_timestamp(curr_l2_block.timestamp);
+        let next_l1_block = self.provider.get_block(curr_origin.number + 1).await;
+        let next_drift_bound = self.next_drift_bound(&curr_origin);
+        let is_past_drift_bound = next_l2_ts > next_drift_bound;
+        if is_past_drift_bound {
+            tracing::info!(
+                "Next l2 block ts is past the allowed drift {}",
+                next_drift_bound
+            );
+        }
+        match (next_l1_block, is_past_drift_bound) {
+            // We found the next l1 block.
+            (Ok(Some(next_l1_block)), _) => {
+                if next_l2_ts >= next_l1_block.timestamp.as_u64() {
+                    Ok(L1BlockInfo::from(next_l1_block))
+                } else {
+                    Ok(curr_origin)
+                }
+            }
+            // We're not past the drift bound, so we just can use the current origin.
+            (result, false) => {
+                if result.is_err() {
+                    tracing::warn!("Failed to get next l1 block: {:?}", result.err());
+                }
+                tracing::info!("Falling back to current origin (couldn't find next).");
+                Ok(curr_origin)
+            }
+            // We're past the drift bound.
+            (_, true) => Err(eyre::eyre!(
+                "Can't use current origin: drift bound exceeded."
+            )),
         }
     }
 }
@@ -56,25 +109,25 @@ impl From<Block<H256>> for L1BlockInfo {
 
 #[async_trait]
 impl SequencingSource for AttributesBuilder {
-
     async fn get_next_attributes(
         &self,
+        safe_l2_head: BlockInfo,
         parent_l2_block: BlockInfo,
         parent_l2_block_origin: L1BlockInfo,
-        state: &State,
-    ) -> Option<PayloadAttributes> {
-        if !self.is_ready(parent_l2_block, state) {
-            return None;
+    ) -> Result<Option<PayloadAttributes>> {
+        if !self.is_ready(parent_l2_block, safe_l2_head) {
+            return Ok(None);
         }
-        let next_origin = self.find_next_origin(parent_l2_block, parent_l2_block_origin).await;
+        let next_origin = self
+            .find_next_origin(parent_l2_block, parent_l2_block_origin)
+            .await?;
         let timestamp = self.next_timestamp(parent_l2_block.timestamp);
         let prev_randao = self.next_randao(next_origin.clone());
         let suggested_fee_recipient = self.config.local_sequencer.suggested_fee_recipient; // expected to be SystemAccounts::default().fee_vault in optimism
         let txs = create_top_of_block_transactions(next_origin);
         let no_tx_pool = timestamp > self.config.chain.max_seq_drift;
         let gas_limit = self.config.chain.system_config.gas_limit;
-        Some(
-            PayloadAttributes{
+        Ok(Some(PayloadAttributes {
             timestamp: U64([timestamp]),
             prev_randao,
             suggested_fee_recipient,
@@ -84,15 +137,15 @@ impl SequencingSource for AttributesBuilder {
             epoch: None,
             l1_inclusion_block: None,
             seq_number: None,
-            }
-        )
+        }))
     }
 }
 
-
 // TODO: implement. requires l1 info tx. requires signer...
 // Creates the transaction(s) to include at the top of the next l2 block.
-fn create_top_of_block_transactions(_origin: L1BlockInfo) -> Vec<RawTransaction> { vec![] }
+fn create_top_of_block_transactions(_origin: L1BlockInfo) -> Vec<RawTransaction> {
+    vec![]
+}
 
 fn generate_http_provider(url: &str) -> Provider<RetryClient<Http>> {
     let client = reqwest::ClientBuilder::new()
@@ -105,4 +158,9 @@ fn generate_http_provider(url: &str) -> Provider<RetryClient<Http>> {
     Provider::new(client)
 }
 
-fn unix_now() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() }
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}

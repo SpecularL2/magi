@@ -12,8 +12,12 @@ use tokio::{
 
 use crate::{
     config::{Config, SyncMode, SystemAccounts},
-    driver::{Driver, sequencing::{self, NoOp}},
-    engine::{Engine, EngineApi, ExecutionPayload, ForkchoiceState, Status}, specular,
+    driver::{
+        sequencing::{self, NoOp},
+        Driver,
+    },
+    engine::{Engine, EngineApi, ExecutionPayload, ForkchoiceState, Status},
+    specular,
 };
 
 const TRUSTED_PEER_ENODE: &str = "enode://e85ba0beec172b17f53b373b0ab72238754259aa39f1ae5290e3244e0120882f4cf95acd203661a27c8618b27ca014d4e193266cb3feae43655ed55358eedb06@3.86.143.120:30303?discport=21693";
@@ -181,21 +185,33 @@ impl Runner {
     }
 
     async fn start_driver(&self) -> Result<()> {
-        match (self.config.local_sequencer.enabled, self.config.chain.meta.enable_full_derivation) {
+        match (
+            self.config.local_sequencer.enabled,
+            self.config.chain.meta.enable_full_derivation,
+        ) {
             (true, true) => {
                 panic!("not currently supported") // TODO: Builder that conforms to optimism's full derivation protocol.
             }
             (true, false) => {
-                let sequencing_src = specular::sequencing::AttributesBuilder::new(self.config.clone());
+                let sequencing_src =
+                    specular::sequencing::AttributesBuilder::new(self.config.clone());
                 self.start_driver_for_real(sequencing_src).await?
             }
-            _ => { self.start_driver_for_real(NoOp{}).await? }
+            _ => self.start_driver_for_real(NoOp {}).await?,
         };
         Ok(())
     }
 
-    async fn start_driver_for_real<T: sequencing::SequencingSource>(&self, sequencing_src: T) -> Result<()> {
-        let mut driver = Driver::from_config(self.config.clone(), self.shutdown_recv.clone(), sequencing_src).await?;
+    async fn start_driver_for_real<T: sequencing::SequencingSource>(
+        &self,
+        sequencing_src: T,
+    ) -> Result<()> {
+        let mut driver = Driver::from_config(
+            self.config.clone(),
+            self.shutdown_recv.clone(),
+            sequencing_src,
+        )
+        .await?;
         if let Err(err) = driver.start().await {
             tracing::error!("driver failure: {}", err);
             std::process::exit(1);
