@@ -189,9 +189,8 @@ impl Runner {
             self.config.local_sequencer.enabled,
             self.config.chain.meta.enable_full_derivation,
         ) {
-            (true, true) => {
-                panic!("not currently supported") // TODO: Builder that conforms to optimism's full derivation protocol.
-            }
+            // TODO: Builder that conforms to optimism's full derivation protocol.
+            (true, true) => panic!("not currently supported"),
             (true, false) => {
                 let sequencing_src =
                     specular::sequencing::AttributesBuilder::new(self.config.clone());
@@ -209,7 +208,7 @@ impl Runner {
         let mut driver = Driver::from_config(
             self.config.clone(),
             self.shutdown_recv.clone(),
-            sequencing_src,
+            Some(sequencing_src),
         )
         .await?;
         if let Err(err) = driver.start().await {

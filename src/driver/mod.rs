@@ -69,7 +69,7 @@ impl<S: sequencing::SequencingSource> Driver<EngineApi, S> {
     pub async fn from_config(
         config: Config,
         shutdown_recv: watch::Receiver<bool>,
-        sequencing_src: S,
+        sequencing_src: Option<S>,
     ) -> Result<Self> {
         let client = reqwest::ClientBuilder::new()
             .timeout(Duration::from_secs(5))
@@ -128,7 +128,7 @@ impl<S: sequencing::SequencingSource> Driver<EngineApi, S> {
             unsafe_block_signer_sender,
             network_service: Some(service),
             channel_timeout: config.chain.channel_timeout,
-            sequencing_source: Some(sequencing_src),
+            sequencing_source: sequencing_src,
         })
     }
 }
@@ -434,7 +434,8 @@ mod tests {
             let provider = Provider::<Http>::try_from(config.l2_rpc_url.clone())?;
             let finalized_block = provider.get_block(block_id).await?.unwrap();
 
-            let driver = Driver::from_config(config, shutdown_recv, NoOp {}).await?;
+            let seq_src: Option<NoOp> = None;
+            let driver = Driver::from_config(config, shutdown_recv, seq_src).await?;
 
             assert_eq!(
                 driver.engine_driver.finalized_head.number,

@@ -65,10 +65,7 @@ impl AttributesBuilder {
         let next_drift_bound = self.next_drift_bound(&curr_origin);
         let is_past_drift_bound = next_l2_ts > next_drift_bound;
         if is_past_drift_bound {
-            tracing::info!(
-                "Next l2 block ts is past the allowed drift {}",
-                next_drift_bound
-            );
+            tracing::info!("Next l2ts exceeds the drift bound {}", next_drift_bound);
         }
         match (next_l1_block, is_past_drift_bound) {
             // We found the next l1 block.
@@ -88,9 +85,7 @@ impl AttributesBuilder {
                 Ok(curr_origin)
             }
             // We're past the drift bound.
-            (_, true) => Err(eyre::eyre!(
-                "Can't use current origin: drift bound exceeded."
-            )),
+            (_, _) => Err(eyre::eyre!("Current origin drift bound exceeded.")),
         }
     }
 }
