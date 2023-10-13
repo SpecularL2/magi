@@ -269,9 +269,9 @@ impl<E: Engine, S: sequencing::SequencingSource> Driver<E, S> {
             // TODO: handle recoverable errors, if any.
             if let Some(attrs) = sequencing_source
                 .get_next_attributes(
-                    safe_l2_head,
-                    self.engine_driver.unsafe_head,
-                    unsafe_head_origin,
+                    &safe_l2_head,
+                    &self.engine_driver.unsafe_head,
+                    &unsafe_head_origin,
                 )
                 .await?
             {
