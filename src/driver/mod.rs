@@ -5,7 +5,7 @@ use std::{
 };
 
 use ethers::{
-    providers::{Http, Provider},
+    providers::{Http, Provider, RetryClient},
     types::Address,
 };
 use eyre::Result;
@@ -25,6 +25,8 @@ use crate::{
     rpc,
     telemetry::metrics,
 };
+
+use sequencing::utils::get_l1_block_info;
 
 use self::engine_driver::EngineDriver;
 
@@ -63,6 +65,8 @@ pub struct Driver<E: Engine, S: sequencing::SequencingSource> {
     channel_timeout: u64,
     /// Local sequencing source
     sequencing_source: Option<S>,
+    /// L1 provider for ad-hoc queries
+    l1_provider: Provider<RetryClient<Http>>,
 }
 
 impl<S: sequencing::SequencingSource> Driver<EngineApi, S> {
@@ -129,6 +133,7 @@ impl<S: sequencing::SequencingSource> Driver<EngineApi, S> {
             network_service: Some(service),
             channel_timeout: config.chain.channel_timeout,
             sequencing_source: sequencing_src,
+            l1_provider: sequencing::utils::generate_http_provider(&config.l1_rpc_url),
         })
     }
 }
@@ -255,31 +260,53 @@ impl<E: Engine, S: sequencing::SequencingSource> Driver<E, S> {
 
     /// Tries to process the next unbuilt payload attributes, building on the current forkchoice.
     async fn advance_unsafe_head_by_attributes(&mut self) -> Result<()> {
-        if let Some(sequencing_source) = self.sequencing_source.as_ref() {
-            let parent_l2_block = &self.engine_driver.unsafe_head;
-            let (safe_l2_head, parent_l2_block_origin) = {
-                let state = self.state.read().unwrap();
-                (
-                    state.safe_head,
-                    state
-                        .l1_info_by_hash(self.engine_driver.unsafe_epoch.hash)
-                        .unwrap()
-                        .block_info
-                        .clone(),
-                )
-            };
-            // TODO: handle recoverable errors, if any.
-            // Get attributes for next payload to build.
-            if let Some(attrs) = sequencing_source
-                .get_next_attributes(&safe_l2_head, parent_l2_block, &parent_l2_block_origin)
-                .await?
-            {
-                // Build payload.
-                self.engine_driver
-                    .handle_attributes(attrs.clone(), false)
-                    .await?
-            }
+        if self.sequencing_source.is_none() {
+            return Ok(());
         }
+        let sequencing_source = self.sequencing_source.as_ref().unwrap();
+        let parent_l2_block = &self.engine_driver.unsafe_head;
+        let safe_l2_head = {
+            let state = self.state.read().unwrap();
+            state.safe_head
+        };
+        if !sequencing_source.is_ready(&safe_l2_head, parent_l2_block) {
+            return Ok(());
+        }
+        // Get full l1 epoch info.
+        // TODO: clean up.
+        let parent_epoch = self.engine_driver.unsafe_epoch;
+        let (parent_l1_epoch, next_l1_epoch) = {
+            // Acquire read lock on state to get epoch info (if it exists).
+            let state = self.state.read().unwrap();
+            (
+                state
+                    .l1_info_by_hash(parent_epoch.hash)
+                    .map(|i| i.block_info.clone()),
+                state
+                    .l1_info_by_number(parent_epoch.number + 1)
+                    .map(|i| i.block_info.clone()),
+            )
+        };
+        // Get l1 epoch info from provider if it doesn't exist in state.
+        // TODO: consider using caching e.g. with the cached crate.
+        let parent_l1_epoch = match parent_l1_epoch {
+            Some(info) => Ok(info),
+            None => get_l1_block_info(&self.l1_provider, parent_epoch.hash).await,
+        };
+        let next_l1_epoch = match next_l1_epoch {
+            Some(info) => Ok(info),
+            None => get_l1_block_info(&self.l1_provider, parent_epoch.number + 1).await,
+        };
+        // TODO: handle recoverable errors, if any.
+        // Get next payload attributes and build the payload.
+        let attrs = sequencing_source
+            .get_next_attributes(
+                parent_l2_block,
+                &parent_l1_epoch?,
+                next_l1_epoch.ok().as_ref(),
+            )
+            .await?;
+        self.engine_driver.handle_attributes(attrs, false).await?;
         Ok(())
     }
 
