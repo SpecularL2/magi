@@ -24,6 +24,8 @@ pub struct EngineDriver<E: Engine> {
     blocktime: u64,
     /// Most recent block found on the p2p network
     pub unsafe_head: BlockInfo,
+    /// Batch epoch of the unsafe head (expected)
+    pub unsafe_epoch: Epoch,
     /// Most recent block that can be derived from L1 data
     pub safe_head: BlockInfo,
     /// Batch epoch of the safe head
@@ -75,6 +77,7 @@ impl<E: Engine> EngineDriver<E> {
 
     pub fn reorg(&mut self) {
         self.unsafe_head = self.finalized_head;
+        self.unsafe_epoch = self.finalized_epoch;
         self.safe_head = self.finalized_head;
         self.safe_epoch = self.finalized_epoch;
     }
@@ -108,6 +111,7 @@ impl<E: Engine> EngineDriver<E> {
             self.update_safe_head(new_head, new_epoch, true)?;
         } else {
             self.unsafe_head = new_head;
+            self.unsafe_epoch = new_epoch;
         }
         self.update_forkchoice().await?;
 
@@ -260,6 +264,7 @@ impl EngineDriver<EngineApi> {
             provider,
             blocktime: config.chain.blocktime,
             unsafe_head: finalized_head,
+            unsafe_epoch: finalized_epoch,
             safe_head: finalized_head,
             safe_epoch: finalized_epoch,
             finalized_head,

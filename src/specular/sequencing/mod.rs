@@ -9,7 +9,7 @@ use eyre::Result;
 use reqwest::Url;
 
 use crate::{
-    common::{BlockInfo, RawTransaction},
+    common::{BlockInfo, RawTransaction, Epoch},
     driver::sequencing::SequencingSource,
     engine::PayloadAttributes,
     l1::L1BlockInfo,
@@ -64,12 +64,12 @@ impl AttributesBuilder {
             // We found the next l1 block.
             (Ok(Some(next_l1_block)), _) => {
                 if next_l2_ts >= next_l1_block.timestamp.as_u64() {
-                    Ok(L1BlockInfo::from(next_l1_block))
+                    try_create_l1_block_info(&next_l1_block)
                 } else {
                     Ok(curr_origin.clone())
                 }
             }
-            // We're not past the drift bound, so we just can use the current origin.
+            // We're not exceeding the drift bound, so we can just use the current origin.
             (result, false) => {
                 if result.is_err() {
                     tracing::warn!("Failed to get next l1 block: {:?}", result.err());
@@ -77,16 +77,15 @@ impl AttributesBuilder {
                 tracing::info!("Falling back to current origin (couldn't find next).");
                 Ok(curr_origin.clone())
             }
-            // We're past the drift bound.
-            (_, _) => Err(eyre::eyre!("Current origin drift bound exceeded.")),
+            // We exceeded the drift bound, so we can't use the current origin.
+            // But we also can't use the next l1 block since we didn't find it.
+            (_, _) => Err(eyre::eyre!("current origin drift bound exceeded.")),
         }
     }
 }
 
 #[async_trait]
 impl SequencingSource for AttributesBuilder {
-    /// Constructs the attributes for the next payload to be built
-    /// on top of `parent_l2_block`, if any (else None).
     async fn get_next_attributes(
         &self,
         safe_l2_head: &BlockInfo,
@@ -101,7 +100,7 @@ impl SequencingSource for AttributesBuilder {
             .await?;
         let timestamp = self.next_timestamp(parent_l2_block.timestamp);
         let prev_randao = next_randao(&next_origin);
-        let suggested_fee_recipient = self.config.suggested_fee_recipient; // expected to be SystemAccounts::default().fee_vault in optimism
+        let suggested_fee_recipient = self.config.suggested_fee_recipient;
         let txs = create_top_of_block_transactions(&next_origin);
         let no_tx_pool = timestamp > self.config.max_seq_drift;
         let gas_limit = self.config.system_config.gas_limit;
@@ -112,7 +111,7 @@ impl SequencingSource for AttributesBuilder {
             transactions: Some(txs),
             no_tx_pool,
             gas_limit: U64([gas_limit]),
-            epoch: None,
+            epoch: Some(create_epoch(next_origin)),
             l1_inclusion_block: None,
             seq_number: None,
         }))
@@ -128,6 +127,30 @@ fn create_top_of_block_transactions(_origin: &L1BlockInfo) -> Vec<RawTransaction
 /// Returns the next l2 block randao, reusing that of the `next_origin`.
 fn next_randao(next_origin: &L1BlockInfo) -> H256 {
     next_origin.mix_hash
+}
+
+/// Tries to extract l1 block info from `block`.
+fn try_create_l1_block_info(block: &Block<H256>) -> Result<L1BlockInfo> {
+    Ok(L1BlockInfo {
+        number: block
+            .number
+            .ok_or(eyre::eyre!("block number missing"))?
+            .as_u64(),
+        hash: block.hash.ok_or(eyre::eyre!("block hash missing"))?,
+        timestamp: block.timestamp.as_u64(),
+        base_fee: block
+            .base_fee_per_gas
+            .ok_or(eyre::eyre!("base fee missing"))?,
+        mix_hash: block.mix_hash.ok_or(eyre::eyre!("mix_hash missing"))?,
+    })
+}
+
+fn create_epoch(info: L1BlockInfo) -> Epoch {
+    Epoch {
+        number: info.number,
+        hash: info.hash,
+        timestamp: info.timestamp,
+    }
 }
 
 fn generate_http_provider(url: &str) -> Provider<RetryClient<Http>> {
@@ -146,16 +169,4 @@ fn unix_now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs()
-}
-
-impl From<Block<H256>> for L1BlockInfo {
-    fn from(block: Block<H256>) -> Self {
-        Self {
-            number: block.number.unwrap().as_u64(),
-            hash: block.hash.unwrap(),
-            timestamp: block.timestamp.as_u64(),
-            base_fee: block.base_fee_per_gas.unwrap(),
-            mix_hash: block.mix_hash.unwrap(),
-        }
-    }
 }

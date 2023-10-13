@@ -20,7 +20,7 @@ use crate::{
     config::Config,
     derive::{state::State, Pipeline},
     engine::{Engine, EngineApi, ExecutionPayload},
-    l1::{BlockUpdate, ChainWatcher, L1BlockInfo},
+    l1::{BlockUpdate, ChainWatcher},
     network::{handlers::block_handler::BlockHandler, service::Service},
     rpc,
     telemetry::metrics,
@@ -254,31 +254,30 @@ impl<E: Engine, S: sequencing::SequencingSource> Driver<E, S> {
     }
 
     /// Tries to process the next unbuilt payload attributes, building on the current forkchoice.
-    /// Only allows attributes with a timestamp greater than the current unsafe head.
     async fn advance_unsafe_head_by_attributes(&mut self) -> Result<()> {
         if let Some(sequencing_source) = self.sequencing_source.as_ref() {
-            // TODO: get unsafe_head_origin
-            let unsafe_head_origin = L1BlockInfo {
-                number: 0,
-                hash: Default::default(),
-                timestamp: 0,
-                base_fee: Default::default(),
-                mix_hash: Default::default(),
-            };
-            let safe_l2_head = self.state.read().unwrap().safe_head;
-            // TODO: handle recoverable errors, if any.
-            if let Some(attrs) = sequencing_source
-                .get_next_attributes(
-                    &safe_l2_head,
-                    &self.engine_driver.unsafe_head,
-                    &unsafe_head_origin,
+            let parent_l2_block = &self.engine_driver.unsafe_head;
+            let (safe_l2_head, parent_l2_block_origin) = {
+                let state = self.state.read().unwrap();
+                (
+                    state.safe_head,
+                    state
+                        .l1_info_by_hash(self.engine_driver.unsafe_epoch.hash)
+                        .unwrap()
+                        .block_info
+                        .clone(),
                 )
+            };
+            // TODO: handle recoverable errors, if any.
+            // Get attributes for next payload to build.
+            if let Some(attrs) = sequencing_source
+                .get_next_attributes(&safe_l2_head, parent_l2_block, &parent_l2_block_origin)
                 .await?
             {
-                _ = self
-                    .engine_driver
+                // Build payload.
+                self.engine_driver
                     .handle_attributes(attrs.clone(), false)
-                    .await
+                    .await?
             }
         }
         Ok(())
