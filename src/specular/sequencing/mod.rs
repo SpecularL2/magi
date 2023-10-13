@@ -10,11 +10,13 @@ use reqwest::Url;
 
 use crate::{
     common::{BlockInfo, RawTransaction},
-    config::Config,
     driver::sequencing::SequencingSource,
     engine::PayloadAttributes,
     l1::L1BlockInfo,
 };
+
+pub mod config;
+use config::Config;
 
 pub struct AttributesBuilder {
     config: Config,
@@ -23,24 +25,21 @@ pub struct AttributesBuilder {
 
 impl AttributesBuilder {
     pub fn new(config: Config) -> Self {
-        let url = config.l1_rpc_url.clone();
-        Self {
-            config,
-            provider: generate_http_provider(&url),
-        }
+        let provider = generate_http_provider(&config.l1_rpc_url);
+        Self { config, provider }
     }
 
     /// Returns true iff:
     /// 1. The parent l2 block is within the max safe lag.
     /// 2. The next timestamp isn't in the future.
     fn is_ready(&self, parent_l2_block: BlockInfo, safe_l2_head: BlockInfo) -> bool {
-        safe_l2_head.number + self.config.local_sequencer.max_safe_lag > parent_l2_block.number
+        safe_l2_head.number + self.config.max_safe_lag > parent_l2_block.number
             && self.next_timestamp(parent_l2_block.timestamp) <= unix_now()
     }
 
     /// Returns the next l2 block timestamp, given the `parent_block_timestamp``.
     fn next_timestamp(&self, parent_block_timestamp: u64) -> u64 {
-        parent_block_timestamp + self.config.chain.blocktime
+        parent_block_timestamp + self.config.blocktime
     }
 
     /// Returns the next l2 block randao, reusing that of the `next_origin`.
@@ -51,7 +50,7 @@ impl AttributesBuilder {
     /// Returns the drift bound on the next l2 block's timestamp.
     /// Can be assumed to always be larger than the L1 block time.
     fn next_drift_bound(&self, curr_origin: &L1BlockInfo) -> u64 {
-        curr_origin.timestamp + self.config.chain.max_seq_drift
+        curr_origin.timestamp + self.config.max_seq_drift
     }
 
     /// Finds the origin of the next L2 block: either the current origin or the next, if sufficient time has passed.
@@ -90,18 +89,6 @@ impl AttributesBuilder {
     }
 }
 
-impl From<Block<H256>> for L1BlockInfo {
-    fn from(block: Block<H256>) -> Self {
-        Self {
-            number: block.number.unwrap().as_u64(),
-            hash: block.hash.unwrap(),
-            timestamp: block.timestamp.as_u64(),
-            base_fee: block.base_fee_per_gas.unwrap(),
-            mix_hash: block.mix_hash.unwrap(),
-        }
-    }
-}
-
 #[async_trait]
 impl SequencingSource for AttributesBuilder {
     async fn get_next_attributes(
@@ -118,17 +105,17 @@ impl SequencingSource for AttributesBuilder {
             .await?;
         let timestamp = self.next_timestamp(parent_l2_block.timestamp);
         let prev_randao = self.next_randao(next_origin.clone());
-        let suggested_fee_recipient = self.config.local_sequencer.suggested_fee_recipient; // expected to be SystemAccounts::default().fee_vault in optimism
+        let suggested_fee_recipient = self.config.suggested_fee_recipient; // expected to be SystemAccounts::default().fee_vault in optimism
         let txs = create_top_of_block_transactions(next_origin);
-        let no_tx_pool = timestamp > self.config.chain.max_seq_drift;
-        let gas_limit = self.config.chain.system_config.gas_limit;
+        let no_tx_pool = timestamp > self.config.max_seq_drift;
+        let gas_limit = self.config.system_config.gas_limit;
         Ok(Some(PayloadAttributes {
             timestamp: U64([timestamp]),
             prev_randao,
             suggested_fee_recipient,
             transactions: Some(txs),
             no_tx_pool,
-            gas_limit: U64([gas_limit.as_u64()]),
+            gas_limit: U64([gas_limit]),
             epoch: None,
             l1_inclusion_block: None,
             seq_number: None,
@@ -158,4 +145,16 @@ fn unix_now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs()
+}
+
+impl From<Block<H256>> for L1BlockInfo {
+    fn from(block: Block<H256>) -> Self {
+        Self {
+            number: block.number.unwrap().as_u64(),
+            hash: block.hash.unwrap(),
+            timestamp: block.timestamp.as_u64(),
+            base_fee: block.base_fee_per_gas.unwrap(),
+            mix_hash: block.mix_hash.unwrap(),
+        }
+    }
 }

@@ -27,3 +27,8 @@ impl SequencingSource for NoOp {
         Ok(None)
     }
 }
+
+/// Using this just enables avoiding explicit type qualification everywhere.
+pub fn none() -> Option<NoOp> {
+    None
+}

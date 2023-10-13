@@ -403,10 +403,7 @@ mod tests {
     use eyre::Result;
     use tokio::sync::watch::channel;
 
-    use crate::{
-        config::{ChainConfig, CliConfig},
-        driver::sequencing::NoOp,
-    };
+    use crate::config::{ChainConfig, CliConfig};
 
     use super::*;
 
@@ -434,7 +431,7 @@ mod tests {
             let provider = Provider::<Http>::try_from(config.l2_rpc_url.clone())?;
             let finalized_block = provider.get_block(block_id).await?.unwrap();
 
-            let seq_src: Option<NoOp> = None;
+            let seq_src = sequencing::none();
             let driver = Driver::from_config(config, shutdown_recv, seq_src).await?;
 
             assert_eq!(

@@ -13,7 +13,7 @@ use tokio::{
 use crate::{
     config::{Config, SyncMode, SystemAccounts},
     driver::{
-        sequencing::{self, NoOp},
+        sequencing::{self},
         Driver,
     },
     engine::{Engine, EngineApi, ExecutionPayload, ForkchoiceState, Status},
@@ -192,23 +192,23 @@ impl Runner {
             // TODO: Builder that conforms to optimism's full derivation protocol.
             (true, true) => panic!("not currently supported"),
             (true, false) => {
-                let sequencing_src =
-                    specular::sequencing::AttributesBuilder::new(self.config.clone());
-                self.start_driver_for_real(sequencing_src).await?
+                let cfg = specular::sequencing::config::Config::new(&self.config);
+                let sequencing_src = specular::sequencing::AttributesBuilder::new(cfg);
+                self.start_driver_for_real(Some(sequencing_src)).await?
             }
-            _ => self.start_driver_for_real(NoOp {}).await?,
+            _ => self.start_driver_for_real(sequencing::none()).await?,
         };
         Ok(())
     }
 
     async fn start_driver_for_real<T: sequencing::SequencingSource>(
         &self,
-        sequencing_src: T,
+        sequencing_src: Option<T>,
     ) -> Result<()> {
         let mut driver = Driver::from_config(
             self.config.clone(),
             self.shutdown_recv.clone(),
-            Some(sequencing_src),
+            sequencing_src,
         )
         .await?;
         if let Err(err) = driver.start().await {
