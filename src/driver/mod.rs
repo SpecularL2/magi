@@ -5,7 +5,7 @@ use std::{
 };
 
 use ethers::{
-    providers::{Http, Provider, RetryClient},
+    providers::{Http, Provider},
     types::Address,
 };
 use eyre::Result;
@@ -26,8 +26,6 @@ use crate::{
     telemetry::metrics,
 };
 
-use sequencing::utils::get_l1_block_info;
-
 use self::engine_driver::EngineDriver;
 
 mod engine_driver;
@@ -38,7 +36,7 @@ pub use types::*;
 
 /// Driver is responsible for advancing the execution node by feeding
 /// the derived chain into the engine API
-pub struct Driver<E: Engine, S: sequencing::SequencingSource> {
+pub struct Driver<E: Engine, S: sequencing::SequencingSource<E>> {
     /// The derivation pipeline
     pipeline: Pipeline,
     /// The engine driver
@@ -64,12 +62,10 @@ pub struct Driver<E: Engine, S: sequencing::SequencingSource> {
     /// Channel timeout length
     channel_timeout: u64,
     /// Local sequencing source
-    sequencing_source: Option<S>,
-    /// L1 provider for ad-hoc queries
-    l1_provider: Provider<RetryClient<Http>>,
+    sequencing_src: Option<S>,
 }
 
-impl<S: sequencing::SequencingSource> Driver<EngineApi, S> {
+impl<S: sequencing::SequencingSource<EngineApi>> Driver<EngineApi, S> {
     pub async fn from_config(
         config: Config,
         shutdown_recv: watch::Receiver<bool>,
@@ -132,13 +128,12 @@ impl<S: sequencing::SequencingSource> Driver<EngineApi, S> {
             unsafe_block_signer_sender,
             network_service: Some(service),
             channel_timeout: config.chain.channel_timeout,
-            sequencing_source: sequencing_src,
-            l1_provider: sequencing::utils::generate_http_provider(&config.l1_rpc_url),
+            sequencing_src,
         })
     }
 }
 
-impl<E: Engine, S: sequencing::SequencingSource> Driver<E, S> {
+impl<E: Engine, S: sequencing::SequencingSource<E>> Driver<E, S> {
     /// Runs the Driver
     pub async fn start(&mut self) -> Result<()> {
         self.await_engine_ready().await;
@@ -260,53 +255,14 @@ impl<E: Engine, S: sequencing::SequencingSource> Driver<E, S> {
 
     /// Tries to process the next unbuilt payload attributes, building on the current forkchoice.
     async fn advance_unsafe_head_by_attributes(&mut self) -> Result<()> {
-        if self.sequencing_source.is_none() {
-            return Ok(());
+        if let Some(sequencing_src) = &self.sequencing_src {
+            let attrs = sequencing_src
+                .get_next_attributes(&self.state, &self.engine_driver)
+                .await?;
+            if let Some(attrs) = attrs {
+                self.engine_driver.handle_attributes(attrs, false).await?;
+            }
         }
-        let sequencing_source = self.sequencing_source.as_ref().unwrap();
-        let parent_l2_block = &self.engine_driver.unsafe_head;
-        let safe_l2_head = {
-            let state = self.state.read().unwrap();
-            state.safe_head
-        };
-        if !sequencing_source.is_ready(&safe_l2_head, parent_l2_block) {
-            return Ok(());
-        }
-        // Get full l1 epoch info.
-        // TODO: clean up.
-        let parent_epoch = self.engine_driver.unsafe_epoch;
-        let (parent_l1_epoch, next_l1_epoch) = {
-            // Acquire read lock on state to get epoch info (if it exists).
-            let state = self.state.read().unwrap();
-            (
-                state
-                    .l1_info_by_hash(parent_epoch.hash)
-                    .map(|i| i.block_info.clone()),
-                state
-                    .l1_info_by_number(parent_epoch.number + 1)
-                    .map(|i| i.block_info.clone()),
-            )
-        };
-        // Get l1 epoch info from provider if it doesn't exist in state.
-        // TODO: consider using caching e.g. with the cached crate.
-        let parent_l1_epoch = match parent_l1_epoch {
-            Some(info) => Ok(info),
-            None => get_l1_block_info(&self.l1_provider, parent_epoch.hash).await,
-        };
-        let next_l1_epoch = match next_l1_epoch {
-            Some(info) => Ok(info),
-            None => get_l1_block_info(&self.l1_provider, parent_epoch.number + 1).await,
-        };
-        // TODO: handle recoverable errors, if any.
-        // Get next payload attributes and build the payload.
-        let attrs = sequencing_source
-            .get_next_attributes(
-                parent_l2_block,
-                &parent_l1_epoch?,
-                next_l1_epoch.ok().as_ref(),
-            )
-            .await?;
-        self.engine_driver.handle_attributes(attrs, false).await?;
         Ok(())
     }
 

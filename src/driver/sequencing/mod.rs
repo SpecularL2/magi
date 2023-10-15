@@ -1,19 +1,108 @@
+use std::sync::{Arc, RwLock};
+
 use async_trait::async_trait;
+use ethers::providers::{Http, JsonRpcClient, Provider};
 use eyre::Result;
+use futures::future::Either;
+use futures::join;
 
-use crate::{common::BlockInfo, engine::PayloadAttributes, l1::L1BlockInfo};
+use crate::{
+    common::BlockInfo,
+    derive::state::State,
+    engine::{Engine, PayloadAttributes},
+    l1::{utils::get_l1_block_info, L1BlockInfo},
+};
 
-pub mod utils;
+use super::engine_driver::EngineDriver;
+
+#[async_trait(?Send)]
+pub trait SequencingSource<E: Engine> {
+    async fn get_next_attributes(
+        &self,
+        state: &Arc<RwLock<State>>,
+        engine_driver: &EngineDriver<E>,
+    ) -> Result<Option<PayloadAttributes>>;
+}
+
+pub struct Source<T: SequencingPolicy, U: JsonRpcClient> {
+    /// The sequencing policy to use to build attributes.
+    policy: T,
+    /// L1 provider for ad-hoc queries
+    provider: Provider<U>,
+}
+
+impl<T: SequencingPolicy, U: JsonRpcClient> Source<T, U> {
+    pub fn new(policy: T, provider: Provider<U>) -> Self {
+        Self { policy, provider }
+    }
+}
+
+#[async_trait(?Send)]
+impl<E: Engine, T: SequencingPolicy, U: JsonRpcClient> SequencingSource<E> for Source<T, U> {
+    async fn get_next_attributes(
+        &self,
+        state: &Arc<RwLock<State>>,
+        engine_driver: &EngineDriver<E>,
+    ) -> Result<Option<PayloadAttributes>> {
+        let parent_l2_block = &engine_driver.unsafe_head;
+        let safe_l2_head = {
+            let state = state.read().unwrap();
+            state.safe_head
+        };
+        // Check if we're ready to try building a new payload.
+        if !self.policy.is_ready(&safe_l2_head, parent_l2_block) {
+            return Ok(None);
+        }
+        // Get full l1 epoch info.
+        let parent_epoch = engine_driver.unsafe_epoch;
+        let (parent_l1_epoch, next_l1_epoch) = {
+            // Acquire read lock on state to get epoch info (if it exists).
+            let state = state.read().unwrap();
+            (
+                state
+                    .l1_info_by_hash(parent_epoch.hash)
+                    .map(|i| i.block_info.clone()),
+                state
+                    .l1_info_by_number(parent_epoch.number + 1)
+                    .map(|i| i.block_info.clone()),
+            )
+        };
+        // Get l1 epoch info from provider if it doesn't exist in state.
+        // TODO: consider using caching e.g. with the cached crate.
+        let (parent_l1_epoch, next_l1_epoch) = join!(
+            match parent_l1_epoch {
+                Some(info) => Either::Left(async { Ok(info) }),
+                None => Either::Right(get_l1_block_info(parent_epoch.hash, &self.provider)),
+            },
+            match next_l1_epoch {
+                Some(info) => Either::Left(async { Ok(info) }),
+                None => Either::Right(get_l1_block_info(parent_epoch.number + 1, &self.provider,)),
+            },
+        );
+        // TODO: handle recoverable errors, if any.
+        // Get next payload attributes and build the payload.
+        Ok(Some(
+            self.policy
+                .get_attributes(
+                    parent_l2_block,
+                    &parent_l1_epoch?,
+                    next_l1_epoch.ok().as_ref(),
+                )
+                .await?,
+        ))
+    }
+}
 
 #[async_trait]
-pub trait SequencingSource {
+pub trait SequencingPolicy {
     /// Returns true iff:
     /// 1. `parent_l2_block` is within the max safe lag (i.e. the unsafe head isn't too far ahead of the safe head).
     /// 2. The next timestamp isn't in the future.
     fn is_ready(&self, safe_l2_head: &BlockInfo, parent_l2_block: &BlockInfo) -> bool;
-    /// Returns the attributes for the next payload to be built, if any.
-    /// If no new payload should be built yet, returns None.
-    async fn get_next_attributes(
+    /// Returns the attributes for a payload to be built on top of `parent_l2_block`.
+    /// If `next_l1_epoch` is `None`, `parent_l1_epoch` is attempted to be used as the epoch.
+    /// However, if it's too late to use `parent_l1_epoch` as the epoch, an error is returned.
+    async fn get_attributes(
         &self,
         parent_l2_block: &BlockInfo,
         parent_l1_epoch: &L1BlockInfo,
@@ -23,12 +112,12 @@ pub trait SequencingSource {
 
 pub struct NoOp;
 #[async_trait]
-impl SequencingSource for NoOp {
+impl SequencingPolicy for NoOp {
     fn is_ready(&self, _: &BlockInfo, _: &BlockInfo) -> bool {
         false
     }
 
-    async fn get_next_attributes(
+    async fn get_attributes(
         &self,
         _: &BlockInfo,
         _: &L1BlockInfo,
@@ -39,6 +128,6 @@ impl SequencingSource for NoOp {
 }
 
 /// Using this just enables avoiding explicit type qualification everywhere.
-pub fn none() -> Option<NoOp> {
+pub fn none() -> Option<Source<NoOp, Http>> {
     None
 }

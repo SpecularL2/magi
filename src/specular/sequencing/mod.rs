@@ -6,7 +6,7 @@ use eyre::Result;
 
 use crate::{
     common::{BlockInfo, Epoch, RawTransaction},
-    driver::sequencing::SequencingSource,
+    driver::sequencing::SequencingPolicy,
     engine::PayloadAttributes,
     l1::L1BlockInfo,
 };
@@ -68,13 +68,13 @@ impl AttributesBuilder {
 }
 
 #[async_trait]
-impl SequencingSource for AttributesBuilder {
+impl SequencingPolicy for AttributesBuilder {
     fn is_ready(&self, safe_l2_head: &BlockInfo, parent_l2_block: &BlockInfo) -> bool {
         safe_l2_head.number + self.config.max_safe_lag > parent_l2_block.number
             && self.next_timestamp(parent_l2_block.timestamp) <= unix_now()
     }
 
-    async fn get_next_attributes(
+    async fn get_attributes(
         &self,
         parent_l2_block: &BlockInfo,
         parent_l1_epoch: &L1BlockInfo,

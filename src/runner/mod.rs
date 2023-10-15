@@ -189,11 +189,13 @@ impl Runner {
             self.config.local_sequencer.enabled,
             self.config.chain.meta.enable_full_derivation,
         ) {
-            // TODO: Builder that conforms to optimism's full derivation protocol.
+            // TODO: use a src that conforms to optimism's full derivation protocol.
             (true, true) => panic!("not currently supported"),
             (true, false) => {
                 let cfg = specular::sequencing::config::Config::new(&self.config);
-                let sequencing_src = specular::sequencing::AttributesBuilder::new(cfg);
+                let policy = specular::sequencing::AttributesBuilder::new(cfg);
+                let provider = Provider::try_from(self.config.l1_rpc_url.clone())?;
+                let sequencing_src = sequencing::Source::new(policy, provider);
                 self.start_driver_for_real(Some(sequencing_src)).await?
             }
             _ => self.start_driver_for_real(sequencing::none()).await?,
@@ -201,7 +203,7 @@ impl Runner {
         Ok(())
     }
 
-    async fn start_driver_for_real<T: sequencing::SequencingSource>(
+    async fn start_driver_for_real<T: sequencing::SequencingSource<EngineApi>>(
         &self,
         sequencing_src: Option<T>,
     ) -> Result<()> {

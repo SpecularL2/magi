@@ -3,7 +3,6 @@ use ethers::types::H160;
 use crate::config;
 
 pub struct Config {
-    pub l1_rpc_url: String,
     pub max_safe_lag: u64,
     pub max_seq_drift: u64,
     pub blocktime: u64,
@@ -18,7 +17,6 @@ pub struct SystemConfig {
 impl Config {
     pub fn new(config: &config::Config) -> Self {
         Self {
-            l1_rpc_url: config.l1_rpc_url.clone(),
             max_safe_lag: config.local_sequencer.max_safe_lag,
             max_seq_drift: config.chain.max_seq_drift,
             blocktime: config.chain.blocktime,

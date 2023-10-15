@@ -1,34 +1,21 @@
-use std::time::Duration;
-
 use ethers::{
-    providers::{Http, HttpRateLimitRetryPolicy, JsonRpcClient, Middleware, Provider, RetryClient},
+    providers::{JsonRpcClient, Middleware, Provider},
     types::{Block, BlockId, H256},
 };
 use eyre::{Result, WrapErr};
-use reqwest::Url;
 
-use crate::l1::L1BlockInfo;
+use super::L1BlockInfo;
 
-pub async fn get_l1_block_info<T: JsonRpcClient, U: Into<BlockId> + Send + Sync>(
-    provider: &Provider<T>,
-    block_id: U,
+/// Fetches the l1 block info for `block_id` using `provider`, which can be either a block number or a block hash.
+pub async fn get_l1_block_info<T: Into<BlockId> + Send + Sync, U: JsonRpcClient>(
+    block_id: T,
+    provider: &Provider<U>,
 ) -> Result<L1BlockInfo> {
     let block = provider.get_block(block_id).await;
     block
         .wrap_err_with(|| "failed to get l1 block")
         .and_then(|b| b.ok_or(eyre::eyre!("no l1 block found")))
         .and_then(|b| try_create_l1_block_info(&b))
-}
-
-pub fn generate_http_provider(url: &str) -> Provider<RetryClient<Http>> {
-    let client = reqwest::ClientBuilder::new()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    let http = Http::new_with_client(Url::parse(url).expect("ivnalid rpc url"), client);
-    let policy = Box::new(HttpRateLimitRetryPolicy);
-    let client = RetryClient::new(http, policy, 100, 50);
-    Provider::new(client)
 }
 
 /// Tries to extract l1 block info from `block`.
