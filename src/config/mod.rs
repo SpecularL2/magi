@@ -61,7 +61,7 @@ pub struct Config {
 }
 
 /// A local sequencer configuration.
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LocalSequencerConfig {
     pub enabled: bool,
     pub suggested_fee_recipient: Address,
@@ -118,6 +118,8 @@ pub struct CliConfig {
     pub rpc_port: Option<u16>,
     #[serde(default)]
     pub devnet: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_sequencer: Option<LocalSequencerConfig>,
 }
 
 /// A Chain Configuration

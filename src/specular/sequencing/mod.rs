@@ -47,9 +47,9 @@ impl AttributesBuilder {
         }
         match (next_l1_epoch, is_drift_bound_exceeded) {
             // We found the next l1 block.
-            (Some(next_l1_block), _) => {
-                if next_l2_ts >= next_l1_block.timestamp {
-                    Ok(next_l1_block.clone())
+            (Some(next_l1_epoch), _) => {
+                if next_l2_ts >= next_l1_epoch.timestamp {
+                    Ok(next_l1_epoch.clone())
                 } else {
                     Ok(curr_l1_epoch.clone())
                 }
@@ -59,7 +59,7 @@ impl AttributesBuilder {
             (_, true) => Err(eyre::eyre!("current origin drift bound exceeded.")),
             // We're not exceeding the drift bound, so we can just use the current origin.
             (_, false) => {
-                tracing::info!("Falling back to current origin (don't have next).");
+                tracing::info!("Falling back to current origin (next is unknown).");
                 Ok(curr_l1_epoch.clone())
             }
         }
