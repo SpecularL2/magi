@@ -255,14 +255,16 @@ impl<E: Engine, S: sequencing::SequencingSource<E>> Driver<E, S> {
 
     /// Tries to process the next unbuilt payload attributes, building on the current forkchoice.
     async fn advance_unsafe_head_by_attributes(&mut self) -> Result<()> {
-        if let Some(sequencing_src) = &self.sequencing_src {
-            let attrs = sequencing_src
-                .get_next_attributes(&self.state, &self.engine_driver)
-                .await?;
-            if let Some(attrs) = attrs {
-                self.engine_driver.handle_attributes(attrs, false).await?;
-            }
-        }
+        let Some(sequencing_src) = &self.sequencing_src else {
+            return Ok(());
+        };
+        let Some(attrs) = sequencing_src
+            .get_next_attributes(&self.state, &self.engine_driver)
+            .await?
+        else {
+            return Ok(());
+        };
+        self.engine_driver.handle_attributes(attrs, false).await?;
         Ok(())
     }
 

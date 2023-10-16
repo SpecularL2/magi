@@ -2,6 +2,8 @@ use ethers::types::H160;
 
 use crate::config;
 
+/// Sequencing policy configuration.
+#[derive(Clone, Debug)]
 pub struct Config {
     pub max_safe_lag: u64,
     pub max_seq_drift: u64,
@@ -10,6 +12,8 @@ pub struct Config {
     pub system_config: SystemConfig,
 }
 
+/// Sequencing policy system configuration.
+#[derive(Clone, Debug)]
 pub struct SystemConfig {
     pub gas_limit: u64,
 }

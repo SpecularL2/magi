@@ -12,18 +12,17 @@ use crate::{
 };
 
 pub mod config;
-use config::Config;
 
 pub struct AttributesBuilder {
-    config: Config,
+    config: config::Config,
 }
 
 impl AttributesBuilder {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: config::Config) -> Self {
         Self { config }
     }
 
-    /// Returns the next l2 block timestamp, given the `parent_block_timestamp``.
+    /// Returns the next l2 block timestamp, given the `parent_block_timestamp`.
     fn next_timestamp(&self, parent_block_timestamp: u64) -> u64 {
         parent_block_timestamp + self.config.blocktime
     }
@@ -55,21 +54,24 @@ impl AttributesBuilder {
                     Ok(curr_l1_epoch.clone())
                 }
             }
+            // We exceeded the drift bound, so we can't use the current origin.
+            // But we also can't use the next l1 block since we don't have it.
+            (_, true) => Err(eyre::eyre!("current origin drift bound exceeded.")),
             // We're not exceeding the drift bound, so we can just use the current origin.
             (_, false) => {
-                tracing::info!("Falling back to current origin (couldn't find next).");
+                tracing::info!("Falling back to current origin (don't have next).");
                 Ok(curr_l1_epoch.clone())
             }
-            // We exceeded the drift bound, so we can't use the current origin.
-            // But we also can't use the next l1 block since we didn't find it.
-            (_, _) => Err(eyre::eyre!("current origin drift bound exceeded.")),
         }
     }
 }
 
 #[async_trait]
 impl SequencingPolicy for AttributesBuilder {
-    fn is_ready(&self, safe_l2_head: &BlockInfo, parent_l2_block: &BlockInfo) -> bool {
+    /// Returns true iff:
+    /// 1. `parent_l2_block` is within the max safe lag (i.e. the unsafe head isn't too far ahead of the safe head).
+    /// 2. The next timestamp isn't in the future.
+    fn is_ready(&self, parent_l2_block: &BlockInfo, safe_l2_head: &BlockInfo) -> bool {
         safe_l2_head.number + self.config.max_safe_lag > parent_l2_block.number
             && self.next_timestamp(parent_l2_block.timestamp) <= unix_now()
     }
@@ -128,4 +130,67 @@ fn unix_now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{common::BlockInfo, driver::sequencing::SequencingPolicy};
+
+    use super::{config, unix_now, AttributesBuilder};
+    use eyre::Result;
+
+    #[test]
+    fn test_is_ready() -> Result<()> {
+        // Setup.
+        let config = config::Config {
+            blocktime: 2,
+            max_seq_drift: 0, // anything
+            max_safe_lag: 10,
+            suggested_fee_recipient: Default::default(), // anything
+            system_config: config::SystemConfig { gas_limit: 1 }, // anything
+        };
+        let attrs_builder = AttributesBuilder::new(config.clone());
+        // Run test cases.
+        let cases = vec![(true, true), (true, false), (false, true), (false, false)];
+        for case in cases.iter() {
+            let (input, expected) = generate_is_ready_case(case.0, case.1, config.clone());
+            assert_eq!(
+                attrs_builder.is_ready(&input.0, &input.1),
+                expected,
+                "case: {:?}",
+                case
+            );
+        }
+        Ok(())
+    }
+
+    /// Generates an (input, expected-output) test-case pair for `is_ready`.
+    fn generate_is_ready_case(
+        exceeds_lag: bool,
+        exceeds_present: bool,
+        config: config::Config,
+    ) -> ((BlockInfo, BlockInfo), bool) {
+        let now = unix_now();
+        let parent_info = BlockInfo {
+            number: if exceeds_lag {
+                config.max_safe_lag
+            } else {
+                config.max_safe_lag - 1
+            },
+            hash: Default::default(),
+            parent_hash: Default::default(),
+            timestamp: if exceeds_present {
+                now
+            } else {
+                now - config.blocktime
+            },
+        };
+        let safe_head = BlockInfo {
+            number: 0,
+            hash: Default::default(),
+            parent_hash: Default::default(),
+            timestamp: 0,
+        };
+        ((parent_info, safe_head), !exceeds_lag && !exceeds_present)
+    }
 }

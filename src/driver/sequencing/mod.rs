@@ -17,6 +17,9 @@ use super::engine_driver::EngineDriver;
 
 #[async_trait(?Send)]
 pub trait SequencingSource<E: Engine> {
+    /// Returns the next payload attributes to be built (if any) on top of
+    /// the current unsafe head, as determined by inspecting the `engine_driver`.
+    /// If no attributes are ready to be built, returns `None`.
     async fn get_next_attributes(
         &self,
         state: &Arc<RwLock<State>>,
@@ -50,7 +53,7 @@ impl<E: Engine, T: SequencingPolicy, U: JsonRpcClient> SequencingSource<E> for S
             state.safe_head
         };
         // Check if we're ready to try building a new payload.
-        if !self.policy.is_ready(&safe_l2_head, parent_l2_block) {
+        if !self.policy.is_ready(parent_l2_block, &safe_l2_head) {
             return Ok(None);
         }
         // Get full l1 epoch info.
@@ -95,10 +98,8 @@ impl<E: Engine, T: SequencingPolicy, U: JsonRpcClient> SequencingSource<E> for S
 
 #[async_trait]
 pub trait SequencingPolicy {
-    /// Returns true iff:
-    /// 1. `parent_l2_block` is within the max safe lag (i.e. the unsafe head isn't too far ahead of the safe head).
-    /// 2. The next timestamp isn't in the future.
-    fn is_ready(&self, safe_l2_head: &BlockInfo, parent_l2_block: &BlockInfo) -> bool;
+    /// Returns true iff the policy is ready to build a payload on top of `parent_l2_block`.
+    fn is_ready(&self, parent_l2_block: &BlockInfo, safe_l2_head: &BlockInfo) -> bool;
     /// Returns the attributes for a payload to be built on top of `parent_l2_block`.
     /// If `next_l1_epoch` is `None`, `parent_l1_epoch` is attempted to be used as the epoch.
     /// However, if it's too late to use `parent_l1_epoch` as the epoch, an error is returned.
