@@ -7,8 +7,11 @@ use ethers::{
     utils::keccak256,
 };
 use eyre::Result;
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use tokio::time::{sleep, Duration};
 
+use crate::engine::PayloadId;
 use crate::{
     common::{BlockInfo, Epoch},
     config::Config,
@@ -34,6 +37,9 @@ pub struct EngineDriver<E: Engine> {
     pub finalized_head: BlockInfo,
     /// Batch epoch of the finalized head
     pub finalized_epoch: Epoch,
+
+    pub pending_id: Option<PayloadId>,
+    timer: Option<BoxFuture<'static, ()>>,
 }
 
 impl<E: Engine> EngineDriver<E> {
@@ -97,7 +103,18 @@ impl<E: Engine> EngineDriver<E> {
     ) -> Result<()> {
         let new_epoch = *attributes.epoch.as_ref().unwrap();
 
-        let payload = self.build_payload(attributes).await?;
+        let no_tx_pool = attributes.no_tx_pool;
+        let payload = match self.build_payload(attributes).await {
+            Ok(payload) => payload,
+            Err(e) => {
+                tracing::error!("failed to build payload: {:?}", e);
+                // The pending payload might not be ready yet, so skip this call
+                if !no_tx_pool {
+                    return Ok(());
+                }
+                return Err(e);
+            }
+        };
 
         let new_head = BlockInfo {
             number: payload.block_number.as_u64(),
@@ -131,10 +148,30 @@ impl<E: Engine> EngineDriver<E> {
         Ok(())
     }
 
-    async fn build_payload(&self, attributes: PayloadAttributes) -> Result<ExecutionPayload> {
-        let forkchoice = self.create_forkchoice_state();
+    async fn build_payload(&mut self, attributes: PayloadAttributes) -> Result<ExecutionPayload> {
         let no_tx_pool = attributes.no_tx_pool;
+        // If we have a pending payload, check if we need to wait for it to be built
+        // Invariant: the sequencer builds only one payload at a time
+        if !no_tx_pool {
+            // If the timer is ticking, check if it's ready
+            if let Some(ref mut timer) = self.timer {
+                // If the timer is ready, get the payload
+                if timer.now_or_never().is_some() {
+                    self.timer = None;
+                    // TODO: should we check consistency with `attributes`?
+                    // Notice that we use `.take()` to ensure `pending_id` is cleared
+                    return self
+                        .engine
+                        .get_payload(self.pending_id.take().unwrap())
+                        .await;
+                } else {
+                    // Otherwise, let the timer continue ticking
+                    eyre::bail!("pending payload not ready");
+                }
+            }
+        }
 
+        let forkchoice = self.create_forkchoice_state();
         let update = self
             .engine
             .forkchoice_updated(forkchoice, Some(attributes))
@@ -150,7 +187,9 @@ impl<E: Engine> EngineDriver<E> {
 
         if !no_tx_pool {
             // Wait before fetching the payload to give the engine time to build it.
-            sleep(Duration::from_secs(self.blocktime)).await
+            self.pending_id = Some(id);
+            self.timer = Some(sleep(Duration::from_secs(self.blocktime)).boxed());
+            eyre::bail!("pending payload not ready");
         }
         self.engine.get_payload(id).await
     }
@@ -269,6 +308,9 @@ impl EngineDriver<EngineApi> {
             safe_epoch: finalized_epoch,
             finalized_head,
             finalized_epoch,
+
+            pending_id: None,
+            timer: None,
         })
     }
 }

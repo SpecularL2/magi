@@ -47,6 +47,11 @@ impl<E: Engine, T: SequencingPolicy, U: JsonRpcClient> SequencingSource<E> for S
         state: &Arc<RwLock<State>>,
         engine_driver: &EngineDriver<E>,
     ) -> Result<Option<PayloadAttributes>> {
+        // Check if we're already building a payload.
+        if engine_driver.pending_id.is_some() {
+            return Ok(None);
+        }
+
         let parent_l2_block = &engine_driver.unsafe_head;
         let safe_l2_head = {
             let state = state.read().unwrap();
