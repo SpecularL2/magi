@@ -145,7 +145,6 @@ where
             derived_batch.map(|batch| batch.into())
         };
 
-
         Ok(batch)
     }
 
