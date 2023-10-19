@@ -4,7 +4,7 @@ use ethers::{
     abi::parse_abi_str,
     contract::Lazy,
     prelude::BaseContract,
-    types::{Bytes, Selector, U256},
+    types::{Bytes, Selector},
 };
 use eyre::Result;
 use std::collections::VecDeque;
@@ -90,7 +90,7 @@ impl SpecularBatcherTransaction {
     pub fn new(l1_inclusion_block: u64, data: &[u8]) -> Result<Self> {
         let tx_batch: AppendTxBatchInput =
             APPEND_TX_BATCH_ABI.decode_with_selector(*APPEND_TX_BATCH_SELECTOR, data)?;
-        
+
         let version = tx_batch.0[0];
         let tx_batch = tx_batch.0.slice(1..).into();
 
