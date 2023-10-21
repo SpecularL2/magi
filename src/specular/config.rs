@@ -39,6 +39,15 @@ struct ChainGenesisInfo {
     number: u64,
 }
 
+impl ChainConfig {
+    pub fn from_specular_json(path: &str) -> Self {
+        tracing::info!("loading external specular chain config from {}", path);
+        let file = std::fs::File::open(path).unwrap();
+        let external: ExternalChainConfig = serde_json::from_reader(file).unwrap();
+        external.into()
+    }
+}
+
 impl From<ExternalChainConfig> for ChainConfig {
     fn from(external: ExternalChainConfig) -> Self {
         Self {
@@ -75,18 +84,6 @@ impl From<ExternalChainConfig> for ChainConfig {
             l2_to_l1_message_passer: Address::zero(), // not used?
             meta: ProtocolMetaConfig::specular(),
         }
-    }
-}
-
-impl ChainConfig {
-    pub fn from_specular_json(path: &str) -> Self {
-        tracing::info!(
-            "loading external specular chain config from json at {}",
-            path
-        );
-        let file = std::fs::File::open(path).unwrap();
-        let external: ExternalChainConfig = serde_json::from_reader(file).unwrap();
-        external.into()
     }
 }
 
