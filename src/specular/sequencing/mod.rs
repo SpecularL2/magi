@@ -31,8 +31,7 @@ impl AttributesBuilder {
     pub fn new(config: config::Config, l2_provider: Option<Provider<Http>>) -> Self {
         let wallet = LocalWallet::try_from(config.sequencer_private_key.clone())
             .expect("invalid sequencer private key");
-        let client = 
-        l2_provider.map(|l2_provider| SignerMiddleware::new(l2_provider, wallet));
+        let client = l2_provider.map(|l2_provider| SignerMiddleware::new(l2_provider, wallet));
         Self { config, client }
     }
 
@@ -102,7 +101,10 @@ impl SequencingPolicy for AttributesBuilder {
         let timestamp = self.next_timestamp(parent_l2_block.timestamp);
         let prev_randao = next_randao(&next_origin);
         let suggested_fee_recipient = self.config.system_config.batch_sender;
-        let client = self.client.as_ref().ok_or(eyre::eyre!("client not initialized"))?;
+        let client = self
+            .client
+            .as_ref()
+            .ok_or(eyre::eyre!("client not initialized"))?;
         let txs = create_l1_oracle_update_transaction(
             &self.config,
             client,
