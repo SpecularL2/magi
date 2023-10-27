@@ -15,6 +15,7 @@ struct ExternalChainConfig {
     l1_chain_id: u64,
     l2_chain_id: u64,
     batch_inbox_address: Address,
+    l1_oracle_address: Address,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +84,7 @@ impl From<ExternalChainConfig> for ChainConfig {
             blocktime: external.block_time,
             l2_to_l1_message_passer: Address::zero(), // not used?
             meta: ProtocolMetaConfig::specular(),
+            l1_oracle: external.l1_oracle_address,
         }
     }
 }

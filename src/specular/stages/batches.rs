@@ -12,7 +12,6 @@ use crate::config::Config;
 use crate::derive::stages::batches::Batch;
 use crate::derive::state::State;
 use crate::derive::PurgeableIterator;
-use crate::l1::L1BlockInfo;
 use ethers::utils::rlp::{DecoderError, Rlp};
 
 use super::batcher_transactions::SpecularBatcherTransaction;
@@ -124,6 +123,7 @@ where
                     let epoch = if next_timestamp < next_epoch.timestamp {
                         epoch
                     } else {
+                        // TODO[zhe]: we might have to be stuck in the same epoch forever, so this is incorrect
                         next_epoch
                     };
 
@@ -183,19 +183,42 @@ fn decode_batches(
     batcher_ransaction: &SpecularBatcherTransaction,
     state: &RwLock<State>,
 ) -> Result<Vec<SpecularBatchV0>> {
+    if batcher_ransaction.version != 0 {
+        eyre::bail!("unsupported batcher transaction version");
+    }
+
     let mut batches = Vec::new();
 
-    let state = state.read().unwrap();
-    let l1_info = &state
-        .l1_info_by_number(batcher_ransaction.l1_inclusion_block)
-        .expect("L1 block must been seen when batcher transaction is decoded")
-        .block_info;
+    let is_epoch_update = batcher_ransaction.tx_batch[0] == 0;
+    let rlp = Rlp::new(&batcher_ransaction.tx_batch[1..]);
 
-    let rlp = Rlp::new(&batcher_ransaction.tx_batch);
-    let first_l2_block_number: u64 = rlp.val_at(0)?;
-    for (batch, idx) in rlp.at(1)?.iter().zip(0u64..) {
-        let batch = SpecularBatchV0::decode(&batch, first_l2_block_number + idx, l1_info)?; // TODO[zhe]: derive l1 inclusion block
+    let (rlp_offset, epoch_num, epoch_hash) = if is_epoch_update {
+        let epoch_num: u64 = rlp.val_at(0)?;
+        let epoch_hash: H256 = rlp.val_at(1)?;
+        (2, epoch_num, epoch_hash)
+    } else {
+        // If not an epoch update, this batcher transaction extends the current epoch
+        let state = state.read().unwrap();
+        (0, state.safe_epoch.number, state.safe_epoch.hash)
+    };
+
+    let first_l2_block_number: u64 = rlp.val_at(rlp_offset)?;
+    for (batch, idx) in rlp.at(rlp_offset + 1)?.iter().zip(0u64..) {
+        let batch = SpecularBatchV0::decode(
+            &batch,
+            epoch_num,
+            epoch_hash,
+            first_l2_block_number + idx,
+            batcher_ransaction.l1_inclusion_block,
+        )?;
         batches.push(batch);
+    }
+
+    // Only the first batch in a batcher transaction will be marked as an epoch update
+    if is_epoch_update {
+        if let Some(batch) = batches.first_mut() {
+            batch.is_epoch_update = true;
+        }
     }
 
     Ok(batches)
@@ -210,28 +233,34 @@ enum BatchStatus {
 /// A batch of transactions with block contexts, which is essentially an L2 block.
 #[derive(Debug, Clone)]
 pub struct SpecularBatchV0 {
+    pub epoch_num: u64,
+    pub epoch_hash: H256,
     pub timestamp: u64,
     pub l2_block_number: u64,
     pub transactions: Vec<RawTransaction>,
     pub l1_inclusion_block: u64,
-    pub l1_inclusion_hash: H256,
+    pub is_epoch_update: bool,
 }
 
 impl SpecularBatchV0 {
     fn decode(
         rlp: &Rlp,
+        epoch_num: u64,
+        epoch_hash: H256,
         l2_block_number: u64,
-        l1_info: &L1BlockInfo,
+        l1_inclusion_block: u64,
     ) -> Result<Self, DecoderError> {
         let timestamp = rlp.val_at(0)?;
         let transactions = rlp.list_at(1)?;
 
         Ok(Self {
+            epoch_num,
+            epoch_hash,
             timestamp,
             l2_block_number,
             transactions,
-            l1_inclusion_block: l1_info.number,
-            l1_inclusion_hash: l1_info.hash,
+            l1_inclusion_block,
+            is_epoch_update: false, // Will be set by the `decode_batches` function
         })
     }
 
@@ -242,10 +271,9 @@ impl SpecularBatchV0 {
 
 impl From<SpecularBatchV0> for Batch {
     fn from(val: SpecularBatchV0) -> Self {
-        // TODO[zhe]: this is incorrect, use the correct epoch when derivation pipeline is fixed
         Batch {
-            epoch_num: val.l1_inclusion_block,
-            epoch_hash: val.l1_inclusion_hash,
+            epoch_num: val.epoch_num,
+            epoch_hash: val.epoch_hash,
             parent_hash: Default::default(), // we don't care about parent hash
             timestamp: val.timestamp,
             transactions: val.transactions,
