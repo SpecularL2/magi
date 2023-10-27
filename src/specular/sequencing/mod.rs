@@ -24,14 +24,15 @@ pub mod config;
 
 pub struct AttributesBuilder {
     config: config::Config,
-    client: SignerMiddleware<Provider<Http>, LocalWallet>,
+    client: Option<SignerMiddleware<Provider<Http>, LocalWallet>>,
 }
 
 impl AttributesBuilder {
-    pub fn new(config: config::Config, l2_provider: Provider<Http>) -> Self {
+    pub fn new(config: config::Config, l2_provider: Option<Provider<Http>>) -> Self {
         let wallet = LocalWallet::try_from(config.sequencer_private_key.clone())
             .expect("invalid sequencer private key");
-        let client = SignerMiddleware::new(l2_provider, wallet);
+        let client = 
+        l2_provider.map(|l2_provider| SignerMiddleware::new(l2_provider, wallet));
         Self { config, client }
     }
 
@@ -101,9 +102,10 @@ impl SequencingPolicy for AttributesBuilder {
         let timestamp = self.next_timestamp(parent_l2_block.timestamp);
         let prev_randao = next_randao(&next_origin);
         let suggested_fee_recipient = self.config.system_config.batch_sender;
+        let client = self.client.as_ref().ok_or(eyre::eyre!("client not initialized"))?;
         let txs = create_l1_oracle_update_transaction(
             &self.config,
-            &self.client,
+            client,
             parent_l2_block,
             parent_l1_epoch,
             &next_origin,
@@ -192,10 +194,8 @@ mod tests {
     use crate::{common::BlockInfo, driver::sequencing::SequencingPolicy};
 
     use super::{config, unix_now, AttributesBuilder};
-    use ethers::{abi::Address, providers::Provider};
+    use ethers::abi::Address;
     use eyre::Result;
-    use std::env;
-
     #[test]
     fn test_is_ready() -> Result<()> {
         // Setup.
@@ -212,8 +212,7 @@ mod tests {
             sequencer_private_key:
                 "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318".to_string(),
         };
-        let provider = Provider::try_from(env::var("L2_TEST_RPC_URL").unwrap()).unwrap();
-        let attrs_builder = AttributesBuilder::new(config.clone(), provider);
+        let attrs_builder = AttributesBuilder::new(config.clone(), None);
         // Run test cases.
         let cases = vec![(true, true), (true, false), (false, true), (false, false)];
         for case in cases.iter() {
