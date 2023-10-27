@@ -32,10 +32,7 @@ impl AttributesBuilder {
         let wallet = LocalWallet::try_from(config.sequencer_private_key.clone())
             .expect("invalid sequencer private key");
         let client = SignerMiddleware::new(l2_provider, wallet);
-        Self {
-            config,
-            client,
-        }
+        Self { config, client }
     }
 
     /// Returns the next l2 block timestamp, given the `parent_block_timestamp`.
@@ -202,7 +199,7 @@ mod tests {
     #[test]
     fn test_is_ready() -> Result<()> {
         // Setup.
-        let config: config::Config = config::Config {
+        let config = config::Config {
             blocktime: 2,
             max_seq_drift: 0, // anything
             max_safe_lag: 10,
