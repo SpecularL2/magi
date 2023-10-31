@@ -271,6 +271,7 @@ impl SpecularBatchV0 {
 
 impl From<SpecularBatchV0> for Batch {
     fn from(val: SpecularBatchV0) -> Self {
+        // TODO[zhe]: this is incorrect, use the correct epoch when derivation pipeline is fixed
         Batch {
             epoch_num: val.epoch_num,
             epoch_hash: val.epoch_hash,
