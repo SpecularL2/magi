@@ -194,7 +194,7 @@ impl Runner {
             (true, false) => {
                 let cfg = specular::sequencing::config::Config::new(&self.config);
                 let l2_provider = Provider::try_from(&self.config.l2_rpc_url)?;
-                let policy = specular::sequencing::AttributesBuilder::new(cfg, Some(l2_provider));
+                let policy = specular::sequencing::AttributesBuilder::new(cfg, l2_provider);
                 let l1_provider = Provider::try_from(self.config.l1_rpc_url.clone())?;
                 let sequencing_src = sequencing::Source::new(policy, l1_provider);
                 self.start_driver_for_real(Some(sequencing_src)).await?

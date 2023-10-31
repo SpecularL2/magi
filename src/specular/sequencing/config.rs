@@ -1,6 +1,6 @@
 use ethers::types::H160;
 
-use crate::config;
+use crate::config::{Config as MagiConfig, SystemConfig as MagiSystemConfig};
 
 /// Sequencing policy configuration.
 #[derive(Clone, Debug)]
@@ -22,20 +22,24 @@ pub struct SystemConfig {
 }
 
 impl Config {
-    pub fn new(config: &config::Config) -> Self {
+    pub fn new(config: &MagiConfig) -> Self {
         Self {
             max_safe_lag: config.local_sequencer.max_safe_lag,
             max_seq_drift: config.chain.max_seq_drift,
             blocktime: config.chain.blocktime,
             system_config: SystemConfig::new(&config.chain.system_config),
-            l1_oracle_address: config.chain.l1_oracle,
-            sequencer_private_key: config.local_sequencer.private_key.clone(),
+            l1_oracle_address: config.chain.meta.l1_oracle,
+            sequencer_private_key: config
+                .local_sequencer
+                .private_key
+                .clone()
+                .expect("sequencer pk file is required"),
         }
     }
 }
 
 impl SystemConfig {
-    pub fn new(config: &config::SystemConfig) -> Self {
+    pub fn new(config: &MagiSystemConfig) -> Self {
         Self {
             batch_sender: config.batch_sender,
             gas_limit: config.gas_limit.as_u64(),

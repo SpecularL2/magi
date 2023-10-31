@@ -178,18 +178,20 @@ where
 }
 
 /// Decode [SpecularBatchV0] from a [SpecularBatcherTransaction].
+/// If the first [SpecularBatcherTransaction::tx_batch] byte is 0, the [SpecularBatchV0] is an epoch update;
+/// otherwise, it extends the current epoch.
 fn decode_batches(
-    batcher_ransaction: &SpecularBatcherTransaction,
+    batcher_transaction: &SpecularBatcherTransaction,
     state: &RwLock<State>,
 ) -> Result<Vec<SpecularBatchV0>> {
-    if batcher_ransaction.version != 0 {
+    if batcher_transaction.version != 0 {
         eyre::bail!("unsupported batcher transaction version");
     }
 
     let mut batches = Vec::new();
 
-    let is_epoch_update = batcher_ransaction.tx_batch[0] == 0;
-    let rlp = Rlp::new(&batcher_ransaction.tx_batch[1..]);
+    let is_epoch_update = batcher_transaction.tx_batch[0] == 0;
+    let rlp = Rlp::new(&batcher_transaction.tx_batch[1..]);
 
     let (rlp_offset, epoch_num, epoch_hash) = if is_epoch_update {
         let epoch_num: u64 = rlp.val_at(0)?;
@@ -208,7 +210,7 @@ fn decode_batches(
             epoch_num,
             epoch_hash,
             first_l2_block_number + idx,
-            batcher_ransaction.l1_inclusion_block,
+            batcher_transaction.l1_inclusion_block,
         )?;
         batches.push(batch);
     }
