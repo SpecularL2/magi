@@ -107,7 +107,6 @@ where
             }
         };
 
-        // TODO[zhe]: fix correct epoch fetching
         let batch = if derived_batch.is_none() {
             let state = self.state.read().unwrap();
 
@@ -130,7 +129,7 @@ where
                     Some(Batch {
                         epoch_num: epoch.number,
                         epoch_hash: epoch.hash,
-                        parent_hash: Default::default(),
+                        parent_hash: Default::default(), // We don't care about parent_hash
                         timestamp: next_timestamp,
                         transactions: Vec::new(),
                         l1_inclusion_block: current_l1_block,
