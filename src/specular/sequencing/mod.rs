@@ -129,8 +129,8 @@ impl SequencingPolicy for AttributesBuilder {
     }
 }
 
-// TODO: implement. requires l1 info tx. requires signer...
-// Creates the transaction(s) to include at the top of the next l2 block.
+// Creates the `L1Oracle::setL1OracleValues` transaction to include at the top of
+// the next l2 block, which marks the start of an epoch.
 async fn create_l1_oracle_update_transaction(
     config: &config::Config,
     client: &SignerMiddleware<Provider<Http>, LocalWallet>,
@@ -155,7 +155,7 @@ async fn create_l1_oracle_update_transaction(
         .expect("failed to encode setL1OracleValues input");
     // Construct L1 oracle update transaction
     let mut tx = TransactionRequest::new()
-        .to(config.l1_oracle)
+        .to(config.l1_oracle_address)
         .gas(150_000_000) // TODO[zhe]: consider to lower this number
         .value(0)
         .data(input)
@@ -209,7 +209,7 @@ mod tests {
                 batch_sender: Address::zero(),
                 gas_limit: 1,
             }, // anything
-            l1_oracle: Address::zero(),
+            l1_oracle_address: Address::zero(),
             // random publicly known private key
             sequencer_private_key:
                 "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318".to_string(),

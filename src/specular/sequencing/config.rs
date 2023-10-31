@@ -9,7 +9,7 @@ pub struct Config {
     pub max_seq_drift: u64,
     pub blocktime: u64,
     pub system_config: SystemConfig,
-    pub l1_oracle: H160,
+    pub l1_oracle_address: H160,
     pub sequencer_private_key: String,
 }
 
@@ -28,7 +28,7 @@ impl Config {
             max_seq_drift: config.chain.max_seq_drift,
             blocktime: config.chain.blocktime,
             system_config: SystemConfig::new(&config.chain.system_config),
-            l1_oracle: config.chain.l1_oracle,
+            l1_oracle_address: config.chain.l1_oracle,
             sequencer_private_key: config.local_sequencer.private_key.clone(),
         }
     }
