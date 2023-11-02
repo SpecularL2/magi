@@ -220,9 +220,6 @@ fn decode_batches_v0(
     // Decode the transaction batches.
     let batches_offset = if is_epoch_update { 3 } else { 2 };
     let mut batches = Vec::new();
-    // let time_diff = timestamp as i64 - self.finalized_head.timestamp as i64;
-    // let blocks = time_diff / self.blocktime as i64;
-    // let block_num = self.finalized_head.number as i64 + blocks;
     for (batch, idx) in rlp.at(batches_offset)?.iter().zip(0u64..) {
         let batch = SpecularBatchV0{
             epoch_num,
