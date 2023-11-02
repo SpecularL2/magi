@@ -12,7 +12,7 @@ use crate::config::Config;
 use crate::derive::stages::batches::Batch;
 use crate::derive::state::State;
 use crate::derive::PurgeableIterator;
-use ethers::utils::rlp::{DecoderError, Rlp};
+use ethers::utils::rlp::{Rlp};
 
 use super::batcher_transactions::SpecularBatcherTransaction;
 
@@ -216,7 +216,6 @@ fn decode_batches_v0(
     } else {
         (state.safe_epoch.number, state.safe_epoch.hash)
     };
-    drop(state);
     // Decode the transaction batches.
     let batches_offset = if is_epoch_update { 3 } else { 2 };
     let mut batches = Vec::new();
