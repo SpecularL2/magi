@@ -12,9 +12,15 @@ use crate::config::Config;
 use crate::derive::stages::batches::Batch;
 use crate::derive::state::State;
 use crate::derive::PurgeableIterator;
-use ethers::utils::rlp::Rlp;
+use ethers::{
+    types::Transaction,
+    utils::rlp::{Decodable, Rlp},
+};
 
 use super::batcher_transactions::SpecularBatcherTransaction;
+use crate::specular::common::{
+    SetL1OracleValuesInput, SET_L1_ORACLE_VALUES_ABI, SET_L1_ORACLE_VALUES_SELECTOR,
+};
 
 /// The second stage of Specular's derive pipeline.
 /// This stage consumes [SpecularBatcherTransaction]s and produces [SpecularBatchV0]s.
@@ -161,7 +167,6 @@ where
         let next_timestamp = head.timestamp + self.config.chain.blocktime;
 
         // check timestamp range
-        // TODO[zhe]: do we need this?
         match batch.timestamp.cmp(&next_timestamp) {
             Ordering::Greater | Ordering::Less => return BatchStatus::Drop,
             Ordering::Equal => (),
@@ -173,7 +178,21 @@ where
             return BatchStatus::Drop;
         }
 
-        // TODO[zhe]: check inclusion delay, batch origin epoch, and sequencer drift
+        // check the inclusion delay
+        if batch.epoch_num + self.config.chain.seq_window_size < batch.l1_inclusion_block {
+            tracing::warn!("inclusion window elapsed");
+            return BatchStatus::Drop;
+        }
+
+        // TODO[zhe]: check origin epoch and sequencer drift
+
+        // check L1 oracle update transaction
+        if batch.is_epoch_update {
+            if let Err(err) = check_epoch_update_batch(batch, &self.config, &state) {
+                tracing::warn!("invalid epoch update batch, err={:?}", err);
+                return BatchStatus::Drop;
+            }
+        }
 
         if batch.has_invalid_transactions() {
             tracing::warn!("invalid transaction");
@@ -281,4 +300,46 @@ impl From<SpecularBatchV0> for Batch {
             l1_inclusion_block: val.l1_inclusion_block,
         }
     }
+}
+
+fn check_epoch_update_batch(batch: &SpecularBatchV0, config: &Config, state: &State) -> Result<()> {
+    if batch.transactions.is_empty() {
+        eyre::bail!("no setL1OracleValues call");
+    }
+
+    let tx = Transaction::decode(&Rlp::new(&batch.transactions[0].0))?;
+    match tx.to.map(|to| to == config.chain.meta.l1_oracle) {
+        Some(true) => (),
+        _ => eyre::bail!("setL1OracleValues call to wrong address"),
+    }
+
+    if tx.to.is_none() || tx.to.unwrap() != config.chain.meta.l1_oracle {
+        eyre::bail!("setL1OracleValues call to wrong address");
+    }
+    let (epoch_num, timestamp, base_fee, epoch_hash, state_root): SetL1OracleValuesInput =
+        SET_L1_ORACLE_VALUES_ABI
+            .decode_with_selector(*SET_L1_ORACLE_VALUES_SELECTOR, &tx.input.0)?;
+    if epoch_num.as_u64() != batch.epoch_num {
+        eyre::bail!("epoch number mismatch with batcher transaction");
+    }
+    if epoch_hash != batch.epoch_hash {
+        eyre::bail!("epoch hash mismatch with batcher transaction");
+    }
+    let target_epoch = state
+        .l1_info_by_number(epoch_num.as_u64())
+        .ok_or(eyre::eyre!("epoch {} does not exist", epoch_num.as_u64()))?;
+    if epoch_hash != target_epoch.block_info.hash {
+        eyre::bail!("epoch hash mismatch with L1");
+    }
+    if timestamp.as_u64() != target_epoch.block_info.timestamp {
+        eyre::bail!("epoch timestamp mismatch with L1");
+    }
+    if base_fee != target_epoch.block_info.base_fee {
+        eyre::bail!("epoch base fee mismatch with L1");
+    }
+    if state_root != target_epoch.block_info.state_root {
+        eyre::bail!("epoch state root mismatch with L1");
+    }
+
+    Ok(())
 }

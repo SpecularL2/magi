@@ -202,6 +202,15 @@ impl<E: Engine, S: sequencing::SequencingSource<E>> Driver<E, S> {
                 .seq_number
                 .ok_or(eyre::eyre!("attributes without seq number"))?;
 
+            if let Some(ref mut sequencing_src) = self.sequencing_src {
+                if sequencing_src
+                    .should_skip_attributes(&next_attributes)
+                    .await?
+                {
+                    continue;
+                }
+            }
+
             self.engine_driver
                 .handle_attributes(next_attributes, true)
                 .await?;

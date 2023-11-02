@@ -21,6 +21,8 @@ use crate::specular::common::{
 };
 
 pub mod config;
+pub mod validator;
+pub use validator::AttributesValidator;
 
 pub struct AttributesBuilder<M> {
     config: config::Config,
@@ -160,6 +162,11 @@ impl<M: Middleware + 'static> SequencingPolicy for AttributesBuilder<M> {
             l1_inclusion_block: None,
             seq_number: None,
         })
+    }
+
+    async fn should_skip_attributes(&mut self, _: &PayloadAttributes) -> Result<bool> {
+        // We trust our own attributes, so we don't filter them.
+        Ok(false)
     }
 }
 

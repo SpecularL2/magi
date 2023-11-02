@@ -26,6 +26,10 @@ pub trait SequencingSource<E: Engine> {
         state: &Arc<RwLock<State>>,
         engine_driver: &EngineDriver<E>,
     ) -> Result<Option<PayloadAttributes>>;
+
+    /// Returns true if the attributes should be skipped in the derivation pipeline.
+    /// Provides flexibility to post-process attributes before they are used in an async way.
+    async fn should_skip_attributes(&mut self, attributes: &PayloadAttributes) -> Result<bool>;
 }
 
 pub struct Source<T: SequencingPolicy, U: JsonRpcClient> {
@@ -95,6 +99,10 @@ impl<E: Engine, T: SequencingPolicy, U: JsonRpcClient> SequencingSource<E> for S
                 .await?,
         ))
     }
+
+    async fn should_skip_attributes(&mut self, attributes: &PayloadAttributes) -> Result<bool> {
+        self.policy.should_skip_attributes(attributes).await
+    }
 }
 
 #[async_trait]
@@ -110,6 +118,10 @@ pub trait SequencingPolicy {
         parent_l1_epoch: &L1BlockInfo,
         next_l1_epoch: Option<&L1BlockInfo>,
     ) -> Result<PayloadAttributes>;
+
+    /// Returns true if the attributes should be skipped in the derivation pipeline.
+    /// Provides flexibility to post-process attributes before they are used in an async way.
+    async fn should_skip_attributes(&mut self, attributes: &PayloadAttributes) -> Result<bool>;
 }
 
 pub struct NoOp;
@@ -126,6 +138,10 @@ impl SequencingPolicy for NoOp {
         _: Option<&L1BlockInfo>,
     ) -> Result<PayloadAttributes> {
         Ok(Default::default())
+    }
+
+    async fn should_skip_attributes(&mut self, _: &PayloadAttributes) -> Result<bool> {
+        Ok(false)
     }
 }
 

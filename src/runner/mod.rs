@@ -192,10 +192,22 @@ impl Runner {
             // TODO: use a src that conforms to optimism's full derivation protocol.
             (true, true) => panic!("not currently supported"),
             (true, false) => {
+                // Use specular sequencing.
                 let cfg = specular::sequencing::config::Config::new(&self.config);
                 let l2_provider = Provider::try_from(&self.config.l2_rpc_url)?;
                 let policy = specular::sequencing::AttributesBuilder::new(cfg, l2_provider);
-                let l1_provider = Provider::try_from(self.config.l1_rpc_url.clone())?;
+                let l1_provider = Provider::try_from(&self.config.l1_rpc_url)?;
+                let sequencing_src = sequencing::Source::new(policy, l1_provider);
+                self.start_driver_for_real(Some(sequencing_src)).await?
+            }
+            (false, false) => {
+                // Use specular sequencer validation.
+                let l2_provider = Provider::try_from(&self.config.l2_rpc_url)?;
+                let policy = specular::sequencing::AttributesValidator::new(
+                    self.config.chain.l1_start_epoch.number,
+                    l2_provider,
+                );
+                let l1_provider = Provider::try_from(&self.config.l1_rpc_url)?;
                 let sequencing_src = sequencing::Source::new(policy, l1_provider);
                 self.start_driver_for_real(Some(sequencing_src)).await?
             }
