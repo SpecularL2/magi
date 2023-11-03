@@ -125,7 +125,7 @@ impl<M: Middleware + 'static> AttributesBuilder<M> {
 #[async_trait]
 impl<M: Middleware + 'static> SequencingPolicy for AttributesBuilder<M> {
     /// Returns true iff:
-    /// 1. `parent_l2_block` is within the max safe lag (i.e. the unsafe head isn't too far ahead of the safe head).
+    /// 1. `parent_l2_block` is within the max safe lag (i.e. `parent_l2_block` isn't too far ahead of `safe_l2_head`).
     /// 2. The next timestamp isn't in the future.
     fn is_ready(&self, parent_l2_block: &BlockInfo, safe_l2_head: &BlockInfo) -> bool {
         safe_l2_head.number + self.config.max_safe_lag > parent_l2_block.number
@@ -147,7 +147,7 @@ impl<M: Middleware + 'static> SequencingPolicy for AttributesBuilder<M> {
         let txs = self
             .create_l1_oracle_update_transaction(parent_l2_block, parent_l1_epoch, &next_origin)
             .await?;
-        let no_tx_pool = timestamp > self.config.max_seq_drift;
+        let no_tx_pool = timestamp > next_origin.timestamp + self.config.max_seq_drift;
         let gas_limit = self.config.system_config.gas_limit;
         Ok(PayloadAttributes {
             timestamp: U64::from(timestamp),

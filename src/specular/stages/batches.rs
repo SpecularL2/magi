@@ -12,7 +12,7 @@ use crate::config::Config;
 use crate::derive::stages::batches::Batch;
 use crate::derive::state::State;
 use crate::derive::PurgeableIterator;
-use ethers::utils::rlp::{DecoderError, Rlp};
+use ethers::utils::rlp::Rlp;
 
 use super::batcher_transactions::SpecularBatcherTransaction;
 
@@ -76,7 +76,11 @@ where
     fn try_next(&mut self) -> Result<Option<Batch>> {
         let batcher_transaction = self.batcher_transaction_iter.next();
         if let Some(batcher_transaction) = batcher_transaction {
-            let batches = decode_batches(&batcher_transaction, &self.state)?;
+            let batches = decode_batches(
+                &batcher_transaction,
+                &self.state,
+                self.config.chain.blocktime,
+            )?;
             batches.into_iter().for_each(|batch| {
                 tracing::debug!(
                     "saw batch: t={}, bn={:?}, e={}",
@@ -124,7 +128,11 @@ where
                     } else {
                         next_epoch
                     };
-
+                    tracing::trace!(
+                        "inserting empty batch | ts={} epoch_num={}",
+                        epoch.number,
+                        next_timestamp
+                    );
                     Some(Batch {
                         epoch_num: epoch.number,
                         epoch_hash: epoch.hash,
@@ -176,49 +184,60 @@ where
     }
 }
 
-/// Decode [SpecularBatchV0] from a [SpecularBatcherTransaction].
-/// If the first [SpecularBatcherTransaction::tx_batch] byte is 0, the [SpecularBatchV0] is an epoch update;
-/// otherwise, it extends the current epoch.
+/// Decode Specular batches from a [SpecularBatcherTransaction] based on its version.
+/// Currently only version 0 is supported.
+// TODO: consider returning a generic/trait-type to support multiple versions.
 fn decode_batches(
-    batcher_transaction: &SpecularBatcherTransaction,
+    batcher_tx: &SpecularBatcherTransaction,
     state: &RwLock<State>,
+    blocktime: u64,
 ) -> Result<Vec<SpecularBatchV0>> {
-    if batcher_transaction.version != 0 {
+    if batcher_tx.version != 0 {
         eyre::bail!("unsupported batcher transaction version");
     }
+    decode_batches_v0(batcher_tx, state, blocktime)
+}
 
-    let mut batches = Vec::new();
-
-    let is_epoch_update = batcher_transaction.tx_batch[0] == 0;
-    let rlp = Rlp::new(&batcher_transaction.tx_batch[1..]);
-
-    let (rlp_offset, epoch_num, epoch_hash) = if is_epoch_update {
-        let epoch_num: u64 = rlp.val_at(0)?;
-        let epoch_hash: H256 = rlp.val_at(1)?;
-        (2, epoch_num, epoch_hash)
+/// Decodes a [SpecularBatchV0] from a [SpecularBatcherTransaction].
+/// If the first byte of [SpecularBatcherTransaction::tx_batch] is 0,
+/// the [SpecularBatchV0] is an epoch update; otherwise, it extends the current epoch.
+fn decode_batches_v0(
+    batcher_tx: &SpecularBatcherTransaction,
+    state: &RwLock<State>,
+    blocktime: u64,
+) -> Result<Vec<SpecularBatchV0>> {
+    // Decode the epoch-update indicator.
+    let is_epoch_update = batcher_tx.tx_batch[0] == 0;
+    let rlp = Rlp::new(&batcher_tx.tx_batch[1..]);
+    // Get l2 safe head info.
+    let state = state.read().unwrap();
+    let safe_l2_num = state.safe_head.number;
+    let safe_l2_ts = state.safe_head.timestamp;
+    // Decode the first l2 block number.
+    let first_l2_block_num: u64 = rlp.val_at(0)?;
+    let first_l2_block_timestamp = (first_l2_block_num - safe_l2_num) * blocktime + safe_l2_ts;
+    // Decode the epoch number and hash (or extend the current epoch).
+    let (epoch_num, epoch_hash) = if is_epoch_update {
+        let epoch_num: u64 = rlp.val_at(1)?;
+        let epoch_hash: H256 = rlp.val_at(2)?;
+        (epoch_num, epoch_hash)
     } else {
-        // If not an epoch update, this batcher transaction extends the current epoch
-        let state = state.read().unwrap();
-        (0, state.safe_epoch.number, state.safe_epoch.hash)
+        (state.safe_epoch.number, state.safe_epoch.hash)
     };
-
-    let first_l2_block_number: u64 = rlp.val_at(rlp_offset)?;
-    for (batch, idx) in rlp.at(rlp_offset + 1)?.iter().zip(0u64..) {
-        let batch = SpecularBatchV0::decode(
-            &batch,
+    // Decode the transaction batches.
+    let batches_offset = if is_epoch_update { 3 } else { 2 };
+    let mut batches = Vec::new();
+    for (batch, idx) in rlp.at(batches_offset)?.iter().zip(0u64..) {
+        let batch = SpecularBatchV0 {
             epoch_num,
             epoch_hash,
-            first_l2_block_number + idx,
-            batcher_transaction.l1_inclusion_block,
-        )?;
+            timestamp: first_l2_block_timestamp + idx * blocktime,
+            transactions: batch.list_at(0)?,
+            l2_block_number: first_l2_block_num + idx,
+            l1_inclusion_block: batcher_tx.l1_inclusion_block,
+            is_epoch_update: idx == 0 && is_epoch_update, // true only if first batch
+        };
         batches.push(batch);
-    }
-
-    // Only the first batch in a batcher transaction will be marked as an epoch update
-    if is_epoch_update {
-        if let Some(batch) = batches.first_mut() {
-            batch.is_epoch_update = true;
-        }
     }
 
     Ok(batches)
@@ -230,7 +249,7 @@ enum BatchStatus {
     Accept,
 }
 
-/// A batch of transactions with block contexts, which is essentially an L2 block.
+/// A batch of transactions, along with payload attributes.
 #[derive(Debug, Clone)]
 pub struct SpecularBatchV0 {
     pub epoch_num: u64,
@@ -243,27 +262,6 @@ pub struct SpecularBatchV0 {
 }
 
 impl SpecularBatchV0 {
-    fn decode(
-        rlp: &Rlp,
-        epoch_num: u64,
-        epoch_hash: H256,
-        l2_block_number: u64,
-        l1_inclusion_block: u64,
-    ) -> Result<Self, DecoderError> {
-        let timestamp = rlp.val_at(0)?;
-        let transactions = rlp.list_at(1)?;
-
-        Ok(Self {
-            epoch_num,
-            epoch_hash,
-            timestamp,
-            l2_block_number,
-            transactions,
-            l1_inclusion_block,
-            is_epoch_update: false, // Will be set by the `decode_batches` function
-        })
-    }
-
     fn has_invalid_transactions(&self) -> bool {
         self.transactions.iter().any(|tx| tx.0.is_empty())
     }
@@ -274,7 +272,7 @@ impl From<SpecularBatchV0> for Batch {
         Batch {
             epoch_num: val.epoch_num,
             epoch_hash: val.epoch_hash,
-            parent_hash: Default::default(), // we don't care about parent hash
+            parent_hash: Default::default(), // not used
             timestamp: val.timestamp,
             transactions: val.transactions,
             l1_inclusion_block: val.l1_inclusion_block,
