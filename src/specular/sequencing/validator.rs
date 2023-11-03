@@ -18,28 +18,30 @@ use crate::{
 
 pub struct AttributesValidator<T> {
     provider: Provider<T>,
-    current_epoch_num: u64,
     should_skip: bool,
 }
 
 impl<T: JsonRpcClient> AttributesValidator<T> {
-    pub fn new(l1_start_epoch: u64, provider: Provider<T>) -> Self {
+    pub fn new(provider: Provider<T>) -> Self {
         Self {
             provider,
-            current_epoch_num: l1_start_epoch,
             should_skip: false,
         }
     }
 
-    /// Returns true if the epoch number has changed.
-    fn update_epoch(&mut self, attributes: &PayloadAttributes) -> bool {
-        let new_epoch_num = attributes.epoch.as_ref().unwrap().number;
-        let epoch_changed = new_epoch_num != self.current_epoch_num;
+    /// Returns true if the attributes starts a new epoch.
+    /// [Attributes](crate::derive::stages::attributes::Attributes) stage will correctly set
+    /// the sequence number according to epoch changes while taking care of reorgs.
+    fn update_epoch(&mut self, attributes: &PayloadAttributes) -> Result<bool> {
+        let epoch_changed = attributes
+            .seq_number
+            .ok_or(eyre::eyre!("attributes without seq number"))?
+            == 0;
         if epoch_changed {
-            self.current_epoch_num = new_epoch_num;
+            // If the epoch changed, we should execute the l1 oracle update transaction.
             self.should_skip = false;
         }
-        epoch_changed
+        Ok(epoch_changed)
     }
 }
 
@@ -59,7 +61,7 @@ impl<T: JsonRpcClient> SequencingPolicy for AttributesValidator<T> {
     }
 
     async fn should_skip_attributes(&mut self, attributes: &PayloadAttributes) -> Result<bool> {
-        let epoch_changed = self.update_epoch(attributes);
+        let epoch_changed = self.update_epoch(attributes)?;
         if epoch_changed {
             // If the epoch changed, we need to check if the l1 oracle update transaction executes successfully.
             // If empty block, we can skip the cehck.
@@ -80,6 +82,7 @@ impl<T: JsonRpcClient> SequencingPolicy for AttributesValidator<T> {
                 let block = serialize(&BlockNumber::Pending);
                 let res: Result<Bytes, ProviderError> =
                     self.provider.request("eth_call", [tx, block]).await;
+                // If the transaction fails, we should skip all batches in the same epoch.
                 self.should_skip = res.is_err();
             }
         }
