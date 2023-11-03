@@ -198,46 +198,49 @@ fn decode_batches(
     decode_batches_v0(batcher_tx, state, blocktime)
 }
 
-/// Decodes a [SpecularBatchV0] from a [SpecularBatcherTransaction].
-/// If the first byte of [SpecularBatcherTransaction::tx_batch] is 0,
-/// the [SpecularBatchV0] is an epoch update; otherwise, it extends the current epoch.
+/// Decodes [SpecularBatchV0]s from a [SpecularBatcherTransaction].
+/// [SpecularBatcherTransaction] contains multiple lists of [SpecularBatchV0]s.
+/// For each batch list in [SpecularBatcherTransaction], if the first byte of the list is 0,
+/// the first [SpecularBatchV0] in the list is an epoch update; otherwise, it extends the current epoch.
 fn decode_batches_v0(
     batcher_tx: &SpecularBatcherTransaction,
     state: &RwLock<State>,
     blocktime: u64,
 ) -> Result<Vec<SpecularBatchV0>> {
-    // Decode the epoch-update indicator.
-    let is_epoch_update = batcher_tx.tx_batch[0] == 0;
-    let rlp = Rlp::new(&batcher_tx.tx_batch[1..]);
-    // Get l2 safe head info.
-    let state = state.read().unwrap();
-    let safe_l2_num = state.safe_head.number;
-    let safe_l2_ts = state.safe_head.timestamp;
-    // Decode the first l2 block number.
-    let first_l2_block_num: u64 = rlp.val_at(0)?;
-    let first_l2_block_timestamp = (first_l2_block_num - safe_l2_num) * blocktime + safe_l2_ts;
-    // Decode the epoch number and hash (or extend the current epoch).
-    let (epoch_num, epoch_hash) = if is_epoch_update {
-        let epoch_num: u64 = rlp.val_at(1)?;
-        let epoch_hash: H256 = rlp.val_at(2)?;
-        (epoch_num, epoch_hash)
-    } else {
-        (state.safe_epoch.number, state.safe_epoch.hash)
-    };
-    // Decode the transaction batches.
-    let batches_offset = if is_epoch_update { 3 } else { 2 };
     let mut batches = Vec::new();
-    for (batch, idx) in rlp.at(batches_offset)?.iter().zip(0u64..) {
-        let batch = SpecularBatchV0 {
-            epoch_num,
-            epoch_hash,
-            timestamp: first_l2_block_timestamp + idx * blocktime,
-            transactions: batch.list_at(0)?,
-            l2_block_number: first_l2_block_num + idx,
-            l1_inclusion_block: batcher_tx.l1_inclusion_block,
-            is_epoch_update: idx == 0 && is_epoch_update, // true only if first batch
+    let batch_lists = Rlp::new(&batcher_tx.tx_batch);
+    for batch_list in batch_lists.iter() {
+        // Decode the epoch-update indicator.
+        let is_epoch_update = batch_list.val_at::<u8>(0)? == 0;
+        // Get l2 safe head info.
+        let state = state.read().unwrap();
+        let safe_l2_num = state.safe_head.number;
+        let safe_l2_ts = state.safe_head.timestamp;
+        // Decode the first l2 block number.
+        let first_l2_block_num: u64 = batch_list.val_at(1)?;
+        let first_l2_block_timestamp = (first_l2_block_num - safe_l2_num) * blocktime + safe_l2_ts;
+        // Decode the epoch number and hash (or extend the current epoch).
+        let (epoch_num, epoch_hash) = if is_epoch_update {
+            let epoch_num: u64 = batch_list.val_at(2)?;
+            let epoch_hash: H256 = batch_list.val_at(3)?;
+            (epoch_num, epoch_hash)
+        } else {
+            (state.safe_epoch.number, state.safe_epoch.hash)
         };
-        batches.push(batch);
+        // Decode the transaction batches.
+        let batches_offset = if is_epoch_update { 4 } else { 2 };
+        for (batch, idx) in batch_list.at(batches_offset)?.iter().zip(0u64..) {
+            let batch = SpecularBatchV0 {
+                epoch_num,
+                epoch_hash,
+                timestamp: first_l2_block_timestamp + idx * blocktime,
+                transactions: batch.as_list()?,
+                l2_block_number: first_l2_block_num + idx,
+                l1_inclusion_block: batcher_tx.l1_inclusion_block,
+                is_epoch_update: idx == 0 && is_epoch_update, // true only if first batch
+            };
+            batches.push(batch);
+        }
     }
 
     Ok(batches)
