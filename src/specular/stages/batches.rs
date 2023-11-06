@@ -82,11 +82,7 @@ where
     fn try_next(&mut self) -> Result<Option<Batch>> {
         let batcher_transaction = self.batcher_transaction_iter.next();
         if let Some(batcher_transaction) = batcher_transaction {
-            let batches = decode_batches(
-                &batcher_transaction,
-                &self.state,
-                self.config.chain.blocktime,
-            )?;
+            let batches = decode_batches(&batcher_transaction, &self.state, &self.config)?;
             batches.into_iter().for_each(|batch| {
                 tracing::debug!(
                     "saw batch: t={}, bn={:?}, e={}",
@@ -187,8 +183,8 @@ where
         // TODO[zhe]: check origin epoch and sequencer drift
 
         // check L1 oracle update transaction
-        if batch.is_epoch_update {
-            if let Err(err) = check_epoch_update_batch(batch, &self.config, &state) {
+        if batch.l1_oracle_values.is_some() {
+            if let Err(err) = check_epoch_update_batch(batch, &state) {
                 tracing::warn!("invalid epoch update batch, err={:?}", err);
                 return BatchStatus::Drop;
             }
@@ -209,54 +205,62 @@ where
 fn decode_batches(
     batcher_tx: &SpecularBatcherTransaction,
     state: &RwLock<State>,
-    blocktime: u64,
+    config: &Config,
 ) -> Result<Vec<SpecularBatchV0>> {
     if batcher_tx.version != 0 {
         eyre::bail!("unsupported batcher transaction version");
     }
-    decode_batches_v0(batcher_tx, state, blocktime)
+    decode_batches_v0(batcher_tx, state, config)
 }
 
 /// Decodes [SpecularBatchV0]s from a [SpecularBatcherTransaction].
 /// [SpecularBatcherTransaction] contains multiple lists of [SpecularBatchV0]s.
-/// For each batch list in [SpecularBatcherTransaction], if the first byte of the list is 0,
-/// the first [SpecularBatchV0] in the list is an epoch update; otherwise, it extends the current epoch.
+/// For each batch list in [SpecularBatcherTransaction], the first [SpecualrBatchV0] is an epoch update
+/// if the first transaction in the batch is a `setL1OracleValues` call.
 fn decode_batches_v0(
     batcher_tx: &SpecularBatcherTransaction,
     state: &RwLock<State>,
-    blocktime: u64,
+    config: &Config,
 ) -> Result<Vec<SpecularBatchV0>> {
     let mut batches = Vec::new();
     let batch_lists = Rlp::new(&batcher_tx.tx_batch);
+    // Get l2 safe head info.
+    let state = state.read().unwrap();
+    let safe_l2_num = state.safe_head.number;
+    let safe_l2_ts = state.safe_head.timestamp;
+    // Get l2 safe epoch info.
+    let mut epoch_num = state.safe_epoch.number;
+    let mut epoch_hash = state.safe_epoch.hash;
+    // Decode each batch list in the batcher transaction.
     for batch_list in batch_lists.iter() {
-        // Decode the epoch-update indicator.
-        let is_epoch_update = batch_list.val_at::<u8>(0)? == 0;
-        // Get l2 safe head info.
-        let state = state.read().unwrap();
-        let safe_l2_num = state.safe_head.number;
-        let safe_l2_ts = state.safe_head.timestamp;
-        // Decode the first l2 block number.
-        let first_l2_block_num: u64 = batch_list.val_at(1)?;
-        let first_l2_block_timestamp = (first_l2_block_num - safe_l2_num) * blocktime + safe_l2_ts;
-        // Decode the epoch number and hash (or extend the current epoch).
-        let (epoch_num, epoch_hash) = if is_epoch_update {
-            let epoch_num: u64 = batch_list.val_at(2)?;
-            let epoch_hash: H256 = batch_list.val_at(3)?;
-            (epoch_num, epoch_hash)
-        } else {
-            (state.safe_epoch.number, state.safe_epoch.hash)
-        };
-        // Decode the transaction batches.
-        let batches_offset = if is_epoch_update { 4 } else { 2 };
-        for (batch, idx) in batch_list.at(batches_offset)?.iter().zip(0u64..) {
+        // Decode the first l2 block number at offset 0.
+        let first_l2_block_num: u64 = batch_list.val_at(0)?;
+        let first_l2_block_timestamp =
+            (first_l2_block_num - safe_l2_num) * config.chain.blocktime + safe_l2_ts;
+        // Decode the transaction batches at offset 1.
+        for (batch, idx) in batch_list.at(1)?.iter().zip(0u64..) {
+            let transactions: Vec<RawTransaction> = batch.as_list()?;
+            // Try decode the `setL1OacleValues` call if it is the first batch in the list.
+            let l1_oracle_values = if idx == 0 {
+                transactions
+                    .first()
+                    .and_then(|tx| try_decode_l1_oracle_values(tx, config))
+            } else {
+                None
+            };
+            // Update the local epoch info if there's a new epoch.
+            if let Some((new_epoch_num, _, _, new_epoch_hash, _)) = l1_oracle_values {
+                epoch_num = new_epoch_num.as_u64();
+                epoch_hash = new_epoch_hash;
+            }
             let batch = SpecularBatchV0 {
                 epoch_num,
                 epoch_hash,
-                timestamp: first_l2_block_timestamp + idx * blocktime,
-                transactions: batch.as_list()?,
+                timestamp: first_l2_block_timestamp + idx * config.chain.blocktime,
+                transactions,
                 l2_block_number: first_l2_block_num + idx,
                 l1_inclusion_block: batcher_tx.l1_inclusion_block,
-                is_epoch_update: idx == 0 && is_epoch_update, // true only if first batch
+                l1_oracle_values,
             };
             batches.push(batch);
         }
@@ -280,7 +284,7 @@ pub struct SpecularBatchV0 {
     pub l2_block_number: u64,
     pub transactions: Vec<RawTransaction>,
     pub l1_inclusion_block: u64,
-    pub is_epoch_update: bool,
+    pub l1_oracle_values: Option<SetL1OracleValuesInput>,
 }
 
 impl SpecularBatchV0 {
@@ -302,29 +306,24 @@ impl From<SpecularBatchV0> for Batch {
     }
 }
 
-fn check_epoch_update_batch(batch: &SpecularBatchV0, config: &Config, state: &State) -> Result<()> {
-    if batch.transactions.is_empty() {
-        eyre::bail!("no setL1OracleValues call");
+fn try_decode_l1_oracle_values(
+    tx: &RawTransaction,
+    config: &Config,
+) -> Option<SetL1OracleValuesInput> {
+    let tx = Transaction::decode(&Rlp::new(&tx.0)).ok()?;
+    if tx.to? != config.chain.meta.l1_oracle {
+        return None;
     }
 
-    let tx = Transaction::decode(&Rlp::new(&batch.transactions[0].0))?;
-    match tx.to.map(|to| to == config.chain.meta.l1_oracle) {
-        Some(true) => (),
-        _ => eyre::bail!("setL1OracleValues call to wrong address"),
-    }
+    let input = SET_L1_ORACLE_VALUES_ABI
+        .decode_with_selector(*SET_L1_ORACLE_VALUES_SELECTOR, &tx.input.0)
+        .ok()?;
 
-    if tx.to.is_none() || tx.to.unwrap() != config.chain.meta.l1_oracle {
-        eyre::bail!("setL1OracleValues call to wrong address");
-    }
-    let (epoch_num, timestamp, base_fee, epoch_hash, state_root): SetL1OracleValuesInput =
-        SET_L1_ORACLE_VALUES_ABI
-            .decode_with_selector(*SET_L1_ORACLE_VALUES_SELECTOR, &tx.input.0)?;
-    if epoch_num.as_u64() != batch.epoch_num {
-        eyre::bail!("epoch number mismatch with batcher transaction");
-    }
-    if epoch_hash != batch.epoch_hash {
-        eyre::bail!("epoch hash mismatch with batcher transaction");
-    }
+    Some(input)
+}
+
+fn check_epoch_update_batch(batch: &SpecularBatchV0, state: &State) -> Result<()> {
+    let (epoch_num, timestamp, base_fee, epoch_hash, state_root) = batch.l1_oracle_values.unwrap();
     let target_epoch = state
         .l1_info_by_number(epoch_num.as_u64())
         .ok_or(eyre::eyre!("epoch {} does not exist", epoch_num.as_u64()))?;
