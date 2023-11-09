@@ -163,6 +163,7 @@ impl From<LocalSequencerCli> for LocalSequencerConfig {
         Self {
             enabled: value.enabled,
             max_safe_lag: value.max_safe_lag,
+            private_key: value.read_private_key(),
         }
     }
 }
