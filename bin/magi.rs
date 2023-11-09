@@ -146,7 +146,7 @@ impl From<Cli> for CliConfig {
 }
 
 impl LocalSequencerCli {
-    pub fn private_key(&self) -> Option<String> {
+    pub fn read_private_key(&self) -> Option<String> {
         let pk_file = self.pk_file.as_ref()?;
         match std::fs::read_to_string(pk_file) {
             Ok(content) => Some(content),
@@ -163,7 +163,7 @@ impl From<LocalSequencerCli> for LocalSequencerConfig {
         Self {
             enabled: value.enabled,
             max_safe_lag: value.max_safe_lag,
-            private_key: value.private_key(),
+            private_key: value.read_private_key(),
         }
     }
 }
