@@ -461,7 +461,7 @@ mod tests {
                 r: Default::default(),
                 s: Default::default(),
             };
-            let oralce_tx_values: SetL1OracleValuesInput = (
+            let oracle_tx_values: SetL1OracleValuesInput = (
                 epoch_num.into(),
                 timestamp.into(),
                 base_fee.into(),
@@ -469,12 +469,12 @@ mod tests {
                 state_root,
             );
             let oracle_tx_data = SET_L1_ORACLE_VALUES_ABI
-                .encode_with_selector(*SET_L1_ORACLE_VALUES_SELECTOR, oralce_tx_values)?;
-            let oralce_tx: TypedTransaction = TransactionRequest::new()
+                .encode_with_selector(*SET_L1_ORACLE_VALUES_SELECTOR, oracle_tx_values)?;
+            let oracle_tx: TypedTransaction = TransactionRequest::new()
                 .to(config.as_ref().chain.meta.l1_oracle)
                 .data(oracle_tx_data)
                 .into();
-            let encoded_oracle_tx = oralce_tx.rlp_signed(&fake_signature).to_vec();
+            let encoded_oracle_tx = oracle_tx.rlp_signed(&fake_signature).to_vec();
 
             let non_oracle_tx: TypedTransaction = TransactionRequest::new().into();
             let encoded_non_oracle_tx = non_oracle_tx.rlp_signed(&fake_signature).to_vec();
@@ -510,7 +510,7 @@ mod tests {
             assert_eq!(batches[0].transactions.len(), 1);
             assert_eq!(batches[0].transactions[0].0, encoded_oracle_tx);
             assert_eq!(batches[0].l1_inclusion_block, l1_inclusion_block);
-            assert_eq!(batches[0].l1_oracle_values, Some(oralce_tx_values));
+            assert_eq!(batches[0].l1_oracle_values, Some(oracle_tx_values));
 
             assert_eq!(batches[1].epoch_num, epoch_num);
             assert_eq!(batches[1].epoch_hash, epoch_hash);
