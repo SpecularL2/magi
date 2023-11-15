@@ -1,7 +1,7 @@
-use std::str::FromStr;
 use ethers::types::{Address, H256, U256};
 use eyre::Context;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 use crate::{
     common::{BlockInfo, Epoch},
