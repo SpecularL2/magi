@@ -9,6 +9,7 @@ use ethers::{
 use eyre::Result;
 use tokio::time::{sleep, Duration};
 
+use crate::common::RawTransaction;
 use crate::{
     common::{BlockInfo, Epoch},
     config::Config,
@@ -46,7 +47,17 @@ impl<E: Engine> EngineDriver<E> {
 
         if let Some(block) = block {
             if should_skip(&block, &attributes)? {
-                self.skip_attributes(attributes, block).await
+                if update_safe {
+                    self.skip_attributes(attributes, block).await
+                } else {
+                    // TODO: temp fix
+                    let new_epoch = *attributes.epoch.as_ref().unwrap();
+                    let new_head = BlockInfo::try_from(block)?;
+                    self.unsafe_head = new_head;
+                    self.unsafe_epoch = new_epoch;
+                    tracing::warn!("skipping attributes");
+                    Ok(())
+                }
             } else {
                 self.unsafe_head = self.safe_head;
                 self.process_attributes(attributes, update_safe).await
@@ -225,10 +236,13 @@ fn should_skip(block: &Block<Transaction>, attributes: &PayloadAttributes) -> Re
     tracing::debug!("block: {:?}", block);
     tracing::debug!("attributes: {:?}", attributes);
 
+    // TODO: temp fixes
+    let empty_txs: Vec<RawTransaction> = Vec::new();
+
     let attributes_hashes = attributes
         .transactions
         .as_ref()
-        .unwrap()
+        .unwrap_or(&empty_txs)
         .iter()
         .map(|tx| H256(keccak256(&tx.0)))
         .collect::<Vec<_>>();

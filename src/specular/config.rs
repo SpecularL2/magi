@@ -73,7 +73,7 @@ impl From<ExternalChainConfig> for ChainConfig {
                 gas_limit: U256::from(external.genesis.system_config.gas_limit),
                 l1_fee_overhead: U256::from(0),       // not used
                 l1_fee_scalar: U256::from(0),         // not used
-                unsafe_block_signer: Address::zero(), // not used?
+                unsafe_block_signer: external.genesis.system_config.batcher_addr, // not used?
             },
             batch_inbox: external.batch_inbox_address,
             deposit_contract: Address::zero(),         // not used
@@ -85,18 +85,18 @@ impl From<ExternalChainConfig> for ChainConfig {
             regolith_time: 0, // not used
             blocktime: external.block_time,
             l2_to_l1_message_passer: Address::zero(), // not used?
-            meta: ProtocolMetaConfig::specular(SystemAccounts::default().l1_oracle),
+            meta: ProtocolMetaConfig::specular(),
         }
     }
 }
 
 impl ProtocolMetaConfig {
-    pub fn specular(l1_oracle: Address) -> Self {
+    pub fn specular() -> Self {
         Self {
             enable_config_updates: false,
             enable_deposited_txs: false,
             enable_full_derivation: false,
-            l1_oracle,
+            l1_oracle: SystemAccounts::default().l1_oracle,
         }
     }
 }
