@@ -9,7 +9,6 @@ use ethers::{
 use eyre::Result;
 use tokio::time::{sleep, Duration};
 
-use crate::common::RawTransaction;
 use crate::{
     common::{BlockInfo, Epoch},
     config::Config,
@@ -236,13 +235,10 @@ fn should_skip(block: &Block<Transaction>, attributes: &PayloadAttributes) -> Re
     tracing::debug!("block: {:?}", block);
     tracing::debug!("attributes: {:?}", attributes);
 
-    // TODO: temp fixes
-    let empty_txs: Vec<RawTransaction> = Vec::new();
-
     let attributes_hashes = attributes
         .transactions
         .as_ref()
-        .unwrap_or(&empty_txs)
+        .unwrap()
         .iter()
         .map(|tx| H256(keccak256(&tx.0)))
         .collect::<Vec<_>>();

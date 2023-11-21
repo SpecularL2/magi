@@ -32,7 +32,8 @@ pub struct AttributesBuilder<M> {
 impl<M: Middleware + 'static> AttributesBuilder<M> {
     pub fn new(config: config::Config, l2_provider: M) -> Self {
         let wallet = LocalWallet::try_from(config.sequencer_private_key.clone())
-            .expect("invalid sequencer private key").with_chain_id(config.l2_chain_id);
+            .expect("invalid sequencer private key")
+            .with_chain_id(config.l2_chain_id);
         let client = SignerMiddleware::new(l2_provider, wallet);
         Self { config, client }
     }
@@ -90,7 +91,7 @@ impl<M: Middleware + 'static> AttributesBuilder<M> {
     ) -> Result<Option<Vec<RawTransaction>>> {
         if parent_l1_epoch.number == origin.number {
             // Do not include the L1 oracle update tx if we are still in the same L1 epoch.
-            return Ok(None);
+            return Ok(Some(vec![]));
         }
         // Construct L1 oracle update transaction data
         let set_l1_oracle_values_input: SetL1OracleValuesInput = (
@@ -114,15 +115,15 @@ impl<M: Middleware + 'static> AttributesBuilder<M> {
         // TODO[zhe]: here we let the provider to fill in the gas price
         // TODO[zhe]: consider to make it constant?
         // TODO: temp fix
-        if let Err(_) = self.client
+        if self
+            .client
             .fill_transaction(&mut tx, Some(target_l2_block_number.into()))
-            .await {
+            .await
+            .is_err()
+        {
             tracing::info!("failed to fill transaction, try with latest block");
-            self.client
-                .fill_transaction(&mut tx, None)
-                .await?;
-
-            }
+            self.client.fill_transaction(&mut tx, None).await?;
+        }
         let signature = Signer::sign_transaction(self.client.signer(), &tx).await?;
         let raw_tx = tx.rlp_signed(&signature);
         Ok(Some(vec![RawTransaction(raw_tx.0.into())]))
