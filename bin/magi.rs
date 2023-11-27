@@ -1,4 +1,4 @@
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::{env::current_dir, process};
 
 use clap::Parser;
