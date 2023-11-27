@@ -16,8 +16,9 @@ use crate::{
     l1::L1BlockInfo,
 };
 
-use crate::specular::common::{
-    SetL1OracleValuesInput, SET_L1_ORACLE_VALUES_ABI, SET_L1_ORACLE_VALUES_SELECTOR,
+use crate::specular::{
+    common::{SetL1OracleValuesInput, SET_L1_ORACLE_VALUES_ABI, SET_L1_ORACLE_VALUES_SELECTOR},
+    config::SystemAccounts,
 };
 
 pub mod config;
@@ -106,7 +107,7 @@ impl<M: Middleware + 'static> AttributesBuilder<M> {
             .expect("failed to encode setL1OracleValues input");
         // Construct L1 oracle update transaction
         let mut tx = TransactionRequest::new()
-            .to(self.config.l1_oracle_address)
+            .to(SystemAccounts::default().l1_oracle)
             .gas(15_000_000) // TODO[zhe]: consider to lower this number; temporarily lowering it
             .value(0)
             .data(input)
@@ -214,7 +215,6 @@ mod tests {
                 batch_sender: Address::zero(),
                 gas_limit: 1,
             }, // anything
-            l1_oracle_address: Address::zero(),
             // random publicly known private key
             sequencer_private_key:
                 "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318".to_string(),

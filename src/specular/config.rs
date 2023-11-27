@@ -96,7 +96,6 @@ impl ProtocolMetaConfig {
             enable_config_updates: false,
             enable_deposited_txs: false,
             enable_full_derivation: false,
-            l1_oracle: SystemAccounts::default().l1_oracle,
         }
     }
 }
