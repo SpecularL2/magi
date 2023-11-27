@@ -46,19 +46,7 @@ impl<E: Engine> EngineDriver<E> {
 
         if let Some(block) = block {
             if should_skip(&block, &attributes)? {
-                if update_safe {
-                    self.skip_attributes(attributes, block).await
-                } else {
-                    // TODO: check this
-                    self.unsafe_head = BlockInfo::try_from(block)?;
-                    self.unsafe_epoch = *attributes.epoch.as_ref().unwrap();
-                    tracing::warn!(
-                        "skipping attributes built by the sequencer | block#: {}, epoch#: {}",
-                        self.unsafe_head.number,
-                        self.unsafe_epoch.number
-                    );
-                    Ok(())
-                }
+                self.skip_attributes(attributes, block).await
             } else {
                 self.unsafe_head = self.safe_head;
                 self.process_attributes(attributes, update_safe).await
