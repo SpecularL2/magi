@@ -234,7 +234,7 @@ impl<E: Engine> Driver<E> {
             self.future_unsafe_blocks.push(payload);
         }
 
-        let mut engine_driver = self.engine_driver.write().await;
+        let engine_driver = self.engine_driver.read().await;
         self.future_unsafe_blocks.retain(|payload| {
             let unsafe_block_num = payload.block_number.as_u64();
             let synced_block_num = engine_driver.unsafe_head.number;
@@ -248,7 +248,11 @@ impl<E: Engine> Driver<E> {
             .find(|p| p.parent_hash == engine_driver.unsafe_head.hash);
 
         if let Some(payload) = next_unsafe_payload {
-            _ = engine_driver.handle_unsafe_payload(payload).await;
+            engine_driver.push_payload(payload.clone()).await?;
+            drop(engine_driver);
+            // TODO: update epoch of unsafe head.
+            self.engine_driver.write().await.unsafe_head = payload.into();
+            self.engine_driver.read().await.update_forkchoice().await?;
         }
 
         Ok(())

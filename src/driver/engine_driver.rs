@@ -94,14 +94,16 @@ pub async fn execute_action<E: Engine>(
                     .build_new_payload(attrs.clone())
                     .await?
             };
-            // Book-keeping: Update head.
-            let mut engine_driver = engine_driver.write().await;
-            match target {
-                ChainHead::Safe => engine_driver.update_safe_head(new_head, new_epoch, true),
-                ChainHead::Unsafe => engine_driver.update_unsafe_head(new_head, new_epoch),
+            // Book-keeping: prepare for next fork-choice update by updating the head.
+            {
+                let mut engine_driver = engine_driver.write().await;
+                match target {
+                    ChainHead::Safe => engine_driver.update_safe_head(new_head, new_epoch, true),
+                    ChainHead::Unsafe => engine_driver.update_unsafe_head(new_head, new_epoch),
+                }
             }
             // Final fork-choice update. TODO: downgrade lock to read.
-            engine_driver.update_forkchoice().await?;
+            engine_driver.read().await.update_forkchoice().await?;
         }
     }
     Ok(())
@@ -288,7 +290,7 @@ impl<E: Engine> EngineDriver<E> {
         self.engine.get_payload(id).await
     }
 
-    async fn push_payload(&self, payload: ExecutionPayload) -> Result<()> {
+    pub async fn push_payload(&self, payload: ExecutionPayload) -> Result<()> {
         let status = self.engine.new_payload(payload).await?;
         if status.status != Status::Valid && status.status != Status::Accepted {
             eyre::bail!("invalid execution payload");
@@ -361,38 +363,6 @@ fn should_skip(block: &Block<Transaction>, attributes: &PayloadAttributes) -> Re
         && attributes.prev_randao == block.mix_hash.unwrap()
         && attributes.suggested_fee_recipient == block.author.unwrap()
         && attributes.gas_limit.as_u64() == block.gas_limit.as_u64();
-    // if !is_same {
-    //     tracing::info!(
-    //         "NOSKIP(while): {:?} {:?} | {} {} | {} {} | {} {} | {} {}",
-    //         attributes_hashes,
-    //         block_hashes,
-    //         attributes.prev_randao,
-    //         block.mix_hash.unwrap(),
-    //         attributes.suggested_fee_recipient,
-    //         block.author.unwrap(),
-    //         attributes.timestamp.as_u64(),
-    //         block.timestamp.as_u64(),
-    //         attributes.gas_limit.as_u64(),
-    //         block.gas_limit.as_u64(),
-    //     );
-    //     let _ = attributes.transactions.as_ref().unwrap().iter().for_each(
-    //         |tx| tracing::info!("{}", format!("0x{:?}", hex::encode(&tx.0)))
-    //     );
-    //     block.transactions.iter().for_each(
-    //         |tx|
-    //         tracing::info!(
-    //             "nonce={} gas_price={} gas={} to={} val={} in={} from={}",
-    //             tx.nonce,
-    //             tx.gas_price.unwrap(),
-    //             tx.gas,
-    //             tx.to.unwrap(),
-    //             tx.value,
-    //             tx.input,
-    //             tx.from,
-    //         )
-    //     );
-    //     panic!("WHOOPS");
-    // }
 
     Ok(is_same)
 }
