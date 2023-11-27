@@ -71,9 +71,9 @@ impl From<ExternalChainConfig> for ChainConfig {
             system_config: SystemConfig {
                 batch_sender: external.genesis.system_config.batcher_addr,
                 gas_limit: U256::from(external.genesis.system_config.gas_limit),
-                l1_fee_overhead: U256::from(0), // not used
-                l1_fee_scalar: U256::from(0),   // not used
-                unsafe_block_signer: external.genesis.system_config.batcher_addr, // not used?
+                l1_fee_overhead: U256::from(0),       // not used
+                l1_fee_scalar: U256::from(0),         // not used
+                unsafe_block_signer: Address::zero(), // not used?
             },
             batch_inbox: external.batch_inbox_address,
             deposit_contract: Address::zero(),         // not used

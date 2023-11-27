@@ -49,12 +49,14 @@ impl<E: Engine> EngineDriver<E> {
                 if update_safe {
                     self.skip_attributes(attributes, block).await
                 } else {
-                    // TODO: temp fix
-                    let new_epoch = *attributes.epoch.as_ref().unwrap();
-                    let new_head = BlockInfo::try_from(block)?;
-                    self.unsafe_head = new_head;
-                    self.unsafe_epoch = new_epoch;
-                    tracing::warn!("skipping attributes");
+                    // TODO: check this
+                    self.unsafe_head = BlockInfo::try_from(block)?;
+                    self.unsafe_epoch = *attributes.epoch.as_ref().unwrap();
+                    tracing::warn!(
+                        "skipping attributes built by the sequencer | block#: {}, epoch#: {}",
+                        self.unsafe_head.number,
+                        self.unsafe_epoch.number
+                    );
                     Ok(())
                 }
             } else {

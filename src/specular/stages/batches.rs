@@ -241,7 +241,7 @@ fn decode_batches_v0(
                 l1_inclusion_block: state.current_epoch_num,
                 l1_oracle_values: None,
             };
-            tracing::info!(
+            tracing::trace!(
                 "inserting empty batch | num={} ts={}",
                 batch.l2_block_number,
                 batch.timestamp,
