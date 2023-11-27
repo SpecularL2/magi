@@ -277,7 +277,7 @@ fn decode_batches_v0(
                 None
             };
             // Update the local epoch info if there's a new epoch.
-            if let Some((new_epoch_num, _, _, new_epoch_hash, _)) = l1_oracle_values {
+            if let Some((new_epoch_num, _, _, new_epoch_hash, _, _, _)) = l1_oracle_values {
                 epoch_num = new_epoch_num.as_u64();
                 epoch_hash = new_epoch_hash;
             }

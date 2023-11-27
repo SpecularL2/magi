@@ -100,6 +100,9 @@ impl<M: Middleware + 'static> AttributesBuilder<M> {
             origin.base_fee,
             origin.hash,
             origin.state_root,
+            // TODO: read from rollup config
+            U256::from(4242),
+            U256::from(1_000_000),
         );
         let input = SET_L1_ORACLE_VALUES_ABI
             .encode_with_selector(*SET_L1_ORACLE_VALUES_SELECTOR, set_l1_oracle_values_input)
