@@ -58,12 +58,12 @@ impl<S: SequencingSource> SequencingDriver<EngineApi, S> {
 
     /// Runs the driver
     pub async fn start(&mut self) -> Result<()> {
-        tracing::trace!("starting sequencing driver, waiting for engine...");
+        tracing::info!("starting sequencing driver; waiting for engine...");
         self.await_engine_ready().await;
-        tracing::trace!("advancing sequencing driver...");
         loop {
             self.check_shutdown().await;
-
+            tracing::info!("advancing sequencing driver...");
+            self.await_engine_ready().await;
             if let Err(err) = self.advance().await {
                 tracing::error!("fatal error: {:?}", err);
                 self.shutdown().await;

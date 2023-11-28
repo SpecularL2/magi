@@ -132,9 +132,7 @@ impl Driver<EngineApi> {
 impl<E: Engine> Driver<E> {
     /// Runs the Driver
     pub async fn start(&mut self) -> Result<()> {
-        tracing::trace!("starting driver, waiting for engine...");
-        self.await_engine_ready().await;
-        tracing::trace!("engine ready; starting chain watcher...");
+        tracing::info!("starting chain watcher...");
         self.chain_watcher.start()?;
         tracing::info!("chain watcher started; advancing driver...");
         loop {
@@ -161,7 +159,6 @@ impl<E: Engine> Driver<E> {
 
     async fn await_engine_ready(&self) {
         while !self.engine_driver.read().await.engine_ready().await {
-            tracing::info!("waiting for engine ready...");
             self.check_shutdown().await;
             sleep(Duration::from_secs(1)).await;
         }
@@ -170,6 +167,9 @@ impl<E: Engine> Driver<E> {
     /// Attempts to advance the execution node forward using either L1 info our
     /// blocks received on the p2p network.
     async fn advance(&mut self) -> Result<()> {
+        // TODO: `await_engine_ready` was moved from `start` to here.
+        // This is a hack, due to possible lock contention bug (to be reverted).
+        self.await_engine_ready().await;
         self.advance_safe_head().await?;
         self.advance_unsafe_head().await?;
         self.update_finalized().await;
