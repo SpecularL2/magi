@@ -12,7 +12,7 @@ use tokio::{
 
 use crate::{
     derive::state::State,
-    driver::engine_driver::{execute_action, ChainHead, EngineDriver},
+    driver::engine_driver::{execute_action, ChainHeadType, EngineDriver},
     engine::{Engine, EngineApi},
 };
 
@@ -62,8 +62,6 @@ impl<S: SequencingSource> SequencingDriver<EngineApi, S> {
         self.await_engine_ready().await;
         loop {
             self.check_shutdown().await;
-            tracing::info!("advancing sequencing driver...");
-            self.await_engine_ready().await;
             if let Err(err) = self.advance().await {
                 tracing::error!("fatal error: {:?}", err);
                 self.shutdown().await;
@@ -86,10 +84,7 @@ impl<S: SequencingSource> SequencingDriver<EngineApi, S> {
                 .await?;
             // Determine action to take on the next attributes.
             match attrs {
-                Some(attrs) => Some((
-                    attrs.clone(),
-                    engine_driver.determine_action(attrs.clone()).await?,
-                )),
+                Some(attrs) => Some((attrs.clone(), engine_driver.determine_action(&attrs).await?)),
                 None => None,
             }
         };
@@ -98,12 +93,15 @@ impl<S: SequencingSource> SequencingDriver<EngineApi, S> {
                 execute_action(
                     &attrs,
                     action,
-                    ChainHead::Unsafe,
+                    ChainHeadType::Unsafe,
                     self.engine_driver.clone(),
                 )
                 .await
             }
-            None => Ok(()),
+            None => {
+                tracing::info!("no payload to build");
+                Ok(())
+            }
         }
     }
 

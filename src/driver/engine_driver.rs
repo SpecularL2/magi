@@ -45,27 +45,32 @@ pub enum Action {
     Process(bool),
 }
 
-pub enum ChainHead {
+pub enum ChainHeadType {
     Safe,
     Unsafe,
 }
 
+/// Handles the given attributes.
+/// Functionally equivalent to [EngineDriver<E>::handle_attributes], but manages
+/// the engine driver RW lock by acquiring the write lock only as necessary.
 pub async fn handle_attributes<E: Engine>(
     attrs: &PayloadAttributes,
-    target: ChainHead,
+    target: ChainHeadType,
     engine_driver: Arc<RwLock<EngineDriver<E>>>,
 ) -> Result<()> {
     let action = {
         let engine_driver = engine_driver.read().await;
-        engine_driver.determine_action(attrs.clone()).await?
+        engine_driver.determine_action(attrs).await?
     };
     execute_action(attrs, action, target, engine_driver).await
 }
 
+/// Executes `action` for `attrs` at the `target` (either the safe or unsafe head).
+/// An error is returned if the action fails.
 pub async fn execute_action<E: Engine>(
     attrs: &PayloadAttributes,
     action: Action,
-    target: ChainHead,
+    target: ChainHeadType,
     engine_driver: Arc<RwLock<EngineDriver<E>>>,
 ) -> Result<()> {
     match action {
@@ -74,8 +79,8 @@ pub async fn execute_action<E: Engine>(
             let mut engine_driver = engine_driver.write().await;
             let epoch = *attrs.epoch.as_ref().unwrap();
             match target {
-                ChainHead::Safe => engine_driver.update_safe_head(info, epoch, false),
-                ChainHead::Unsafe => engine_driver.update_unsafe_head(info, epoch),
+                ChainHeadType::Safe => engine_driver.update_safe_head(info, epoch, false),
+                ChainHeadType::Unsafe => engine_driver.update_unsafe_head(info, epoch),
             }
         }
         // Process the attributes (build payload + fork-choice update).
@@ -98,8 +103,10 @@ pub async fn execute_action<E: Engine>(
             {
                 let mut engine_driver = engine_driver.write().await;
                 match target {
-                    ChainHead::Safe => engine_driver.update_safe_head(new_head, new_epoch, true),
-                    ChainHead::Unsafe => engine_driver.update_unsafe_head(new_head, new_epoch),
+                    ChainHeadType::Safe => {
+                        engine_driver.update_safe_head(new_head, new_epoch, true)
+                    }
+                    ChainHeadType::Unsafe => engine_driver.update_unsafe_head(new_head, new_epoch),
                 }
             }
             // Final fork-choice update. TODO: downgrade lock to read.
@@ -110,36 +117,20 @@ pub async fn execute_action<E: Engine>(
 }
 
 impl<E: Engine> EngineDriver<E> {
-    pub async fn determine_action(&self, attributes: PayloadAttributes) -> Result<Action> {
-        match self.block_at(attributes.timestamp.as_u64()).await {
-            Some(block) if should_skip(&block, &attributes)? => {
-                Ok(Action::Skip(BlockInfo::try_from(block)?))
-            }
-            Some(_) => Ok(Action::Process(true)),
-            _ => Ok(Action::Process(false)),
-        }
-    }
-
-    /// TODO: No longer used.
+    /// Only use this if you are the only owner.
+    /// Use [mod::handle_attributes] for multi-owner concurrent cases.
     pub async fn handle_attributes(
         &mut self,
         attributes: PayloadAttributes,
         update_safe: bool,
     ) -> Result<()> {
-        let block: Option<Block<Transaction>> = self.block_at(attributes.timestamp.as_u64()).await;
-
-        if let Some(block) = block {
-            tracing::info!("A local L2 block was found for the attrs timestamp");
-            if should_skip(&block, &attributes)? {
-                self.skip_attributes(attributes, BlockInfo::try_from(block)?)
-                    .await
-            } else {
+        match self.determine_action(&attributes).await? {
+            Action::Skip(info) => self.skip_attributes(attributes, info).await,
+            Action::Process(reorg) if reorg => {
                 self.update_unsafe_head(self.safe_head, self.safe_epoch);
-                self.process_attributes(attributes, update_safe).await
+                self.process_attributes(attributes.clone(), reorg).await
             }
-        } else {
-            tracing::info!("No local L2 block found for the attrs timestamp");
-            self.process_attributes(attributes, update_safe).await
+            Action::Process(_) => self.process_attributes(attributes, update_safe).await,
         }
     }
 
@@ -219,6 +210,17 @@ impl<E: Engine> EngineDriver<E> {
             .await
             .map_err(|e| tracing::error!("engine not ready yet: {:?}", e))
             .is_ok()
+    }
+
+    /// Determines the action to take on the given attributes.
+    pub async fn determine_action(&self, attributes: &PayloadAttributes) -> Result<Action> {
+        match self.block_at(attributes.timestamp.as_u64()).await {
+            Some(block) if should_skip(&block, attributes)? => {
+                Ok(Action::Skip(BlockInfo::try_from(block)?))
+            }
+            Some(_) => Ok(Action::Process(true)),
+            _ => Ok(Action::Process(false)),
+        }
     }
 
     async fn process_attributes(
