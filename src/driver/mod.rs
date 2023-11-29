@@ -29,7 +29,7 @@ use crate::{
     telemetry::metrics,
 };
 
-use self::engine_driver::{handle_attributes, ChainHead, EngineDriver};
+use self::engine_driver::{handle_attributes, ChainHeadType, EngineDriver};
 
 pub mod engine_driver;
 mod info;
@@ -132,9 +132,9 @@ impl Driver<EngineApi> {
 impl<E: Engine> Driver<E> {
     /// Runs the Driver
     pub async fn start(&mut self) -> Result<()> {
-        tracing::info!("starting chain watcher...");
+        tracing::trace!("starting chain watcher...");
         self.chain_watcher.start()?;
-        tracing::info!("chain watcher started; advancing driver...");
+        tracing::trace!("chain watcher started; advancing driver...");
         loop {
             self.check_shutdown().await;
 
@@ -197,7 +197,7 @@ impl<E: Engine> Driver<E> {
 
             handle_attributes(
                 &next_attributes,
-                ChainHead::Safe,
+                ChainHeadType::Safe,
                 self.engine_driver.clone(),
             )
             .await?;
@@ -335,6 +335,7 @@ impl<E: Engine> Driver<E> {
             .last();
 
         if let Some((head, epoch, _, _)) = new_finalized {
+            tracing::info!("updating finalized head: {:?}", head.number);
             self.engine_driver
                 .write()
                 .await
