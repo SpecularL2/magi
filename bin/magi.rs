@@ -85,20 +85,23 @@ pub struct LocalSequencerCli {
 
 impl Cli {
     pub fn to_config(self) -> Config {
-        let chain = match self.network.as_str() {
-            "optimism" => ChainConfig::optimism(),
-            "optimism-goerli" => ChainConfig::optimism_goerli(),
-            "optimism-sepolia" => ChainConfig::optimism_sepolia(),
-            "base" => ChainConfig::base(),
-            "base-goerli" => ChainConfig::base_goerli(),
-            path if ChainConfig::is_specular_config(path) => ChainConfig::from_specular_json(path),
-            file if file.ends_with(".json") => ChainConfig::from_json(file),
-            _ => panic!(
-                "Invalid network name. \\
+        let chain =
+            match self.network.as_str() {
+                "optimism" => ChainConfig::optimism(),
+                "optimism-goerli" => ChainConfig::optimism_goerli(),
+                "optimism-sepolia" => ChainConfig::optimism_sepolia(),
+                "base" => ChainConfig::base(),
+                "base-goerli" => ChainConfig::base_goerli(),
+                path if ChainConfig::is_specular_config(path) => {
+                    ChainConfig::from_specular_json(path)
+                }
+                file if file.ends_with(".json") => ChainConfig::from_json(file),
+                _ => panic!(
+                    "Invalid network name. \\
                 Please use one of the following: 'optimism', 'optimism-goerli', 'base-goerli'. \\
                 You can also use a JSON file path for custom configuration."
-            ),
-        };
+                ),
+            };
 
         let config_path = home_dir().unwrap().join(".magi/magi.toml");
         let cli_config = CliConfig::from(self);

@@ -92,13 +92,14 @@ pub async fn execute_action<E: Engine>(
                 engine_driver.update_unsafe_head(safe_head, safe_epoch);
             }
             // Build new payload.
-            let (new_head, new_epoch) = {
-                engine_driver
-                    .read()
-                    .await
-                    .build_new_payload(attrs.clone())
-                    .await?
-            };
+            let (new_head, new_epoch) =
+                {
+                    engine_driver
+                        .read()
+                        .await
+                        .build_new_payload(attrs.clone())
+                        .await?
+                };
             // Book-keeping: prepare for next fork-choice update by updating the head.
             {
                 let mut engine_driver = engine_driver.write().await;

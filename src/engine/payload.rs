@@ -166,10 +166,11 @@ mod tests {
 
             let l2_rpc = std::env::var("L2_TEST_RPC_URL")?;
             let checkpoint_sync_url = Provider::<Http>::try_from(l2_rpc)?;
-            let checkpoint_block = checkpoint_sync_url
-                .get_block_with_txs(checkpoint_hash)
-                .await?
-                .unwrap();
+            let checkpoint_block =
+                checkpoint_sync_url
+                    .get_block_with_txs(checkpoint_hash)
+                    .await?
+                    .unwrap();
 
             let payload = ExecutionPayload::try_from(checkpoint_block)?;
 

@@ -97,10 +97,12 @@ impl Runner {
         tracing::info!("starting checkpoint sync");
 
         let l2_provider = Provider::try_from(&self.config.l2_rpc_url)?;
-        let checkpoint_sync_url =
-            Provider::try_from(self.config.checkpoint_sync_url.as_ref().ok_or(eyre::eyre!(
-                "a checkpoint sync rpc url is required for checkpoint sync"
-            ))?)?;
+        let checkpoint_sync_url = Provider::try_from(
+            self.config
+                .checkpoint_sync_url
+                .as_ref()
+                .ok_or(eyre::eyre!("a checkpoint sync rpc url is required for checkpoint sync"))?,
+        )?;
 
         let checkpoint_block = match self.checkpoint_hash {
             Some(ref checkpoint) => {

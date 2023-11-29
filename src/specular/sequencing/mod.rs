@@ -94,23 +94,25 @@ impl<M: Middleware + 'static> AttributesBuilder<M> {
             return Ok(vec![]);
         }
         // Construct L1 oracle update transaction data
-        let set_l1_oracle_values_input: SetL1OracleValuesInput = (
-            U256::from(origin.number),
-            U256::from(origin.timestamp),
-            origin.base_fee,
-            origin.hash,
-            origin.state_root,
-        );
+        let set_l1_oracle_values_input: SetL1OracleValuesInput =
+            (
+                U256::from(origin.number),
+                U256::from(origin.timestamp),
+                origin.base_fee,
+                origin.hash,
+                origin.state_root,
+            );
         let input = SET_L1_ORACLE_VALUES_ABI
             .encode_with_selector(*SET_L1_ORACLE_VALUES_SELECTOR, set_l1_oracle_values_input)
             .expect("failed to encode setL1OracleValues input");
         // Construct L1 oracle update transaction
-        let mut tx = TransactionRequest::new()
-            .to(SystemAccounts::default().l1_oracle)
-            .gas(15_000_000) // TODO[zhe]: consider to lower this number or make it configurable
-            .value(0)
-            .data(input)
-            .into();
+        let mut tx =
+            TransactionRequest::new()
+                .to(SystemAccounts::default().l1_oracle)
+                .gas(15_000_000) // TODO[zhe]: consider to lower this number or make it configurable
+                .value(0)
+                .data(input)
+                .into();
         // TODO[zhe]: here we let the provider to fill in the gas price, consider to make it constant?
         // Currently `get_attributes` is always called with `parent_l2_block` being the latest block, see src/driver/sequencing/mod.rs:51.
         // Therefore, we can assume we're at the latest block and can fill on `Pending` block

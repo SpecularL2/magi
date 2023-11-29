@@ -114,14 +114,15 @@ impl Frame {
             data[frame_data_end] != 0
         };
 
-        let frame = Self {
-            channel_id,
-            frame_number,
-            frame_data_len,
-            frame_data,
-            is_last,
-            l1_inclusion_block,
-        };
+        let frame =
+            Self {
+                channel_id,
+                frame_number,
+                frame_data_len,
+                frame_data,
+                is_last,
+                l1_inclusion_block,
+            };
 
         tracing::debug!(
             "saw batcher tx: block={}, number={}, is_last={}",

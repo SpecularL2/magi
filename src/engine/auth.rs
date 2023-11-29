@@ -109,13 +109,14 @@ mod tests {
 
     #[tokio::test]
     async fn construct_valid_raw_claims() {
-        let claims = Claims {
-            iat: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            exp: 10000000000,
-        };
+        let claims =
+            Claims {
+                iat: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                exp: 10000000000,
+            };
         assert!(claims.valid());
     }
 

@@ -30,11 +30,12 @@ pub fn init(
         let directory = PathBuf::from(dir);
         let rotation =
             get_rotation_strategy(&logs_rotation.unwrap_or_else(|| DEFAULT_ROTATION.into()));
-        let appender = Some(get_rolling_file_appender(
-            directory,
-            rotation,
-            LOG_FILE_NAME_PREFIX,
-        ));
+        let appender =
+            Some(get_rolling_file_appender(
+                directory,
+                rotation,
+                LOG_FILE_NAME_PREFIX,
+            ));
         return build_subscriber(verbose, appender);
     }
 

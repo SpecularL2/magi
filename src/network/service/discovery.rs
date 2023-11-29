@@ -62,10 +62,11 @@ fn is_valid_node(node: &Enr<CombinedKey>, chain_id: u64) -> bool {
 }
 
 fn create_disc(chain_id: u64) -> Result<Discv5> {
-    let opstack = OpStackEnrData {
-        chain_id,
-        version: 0,
-    };
+    let opstack =
+        OpStackEnrData {
+            chain_id,
+            version: 0,
+        };
     let opstack_data: Vec<u8> = opstack.into();
 
     let key = CombinedKey::generate_secp256k1();

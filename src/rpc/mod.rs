@@ -74,15 +74,16 @@ fn convert_err<T, E: Display>(res: Result<T, E>) -> Result<T, Error> {
 
 fn compute_l2_output_root(block: Block<H256>, storage_root: H256) -> H256 {
     let version: H256 = Default::default();
-    let digest = keccak256(
-        [
-            version.to_fixed_bytes(),
-            block.state_root.to_fixed_bytes(),
-            storage_root.to_fixed_bytes(),
-            block.hash.unwrap().to_fixed_bytes(),
-        ]
-        .concat(),
-    );
+    let digest =
+        keccak256(
+            [
+                version.to_fixed_bytes(),
+                block.state_root.to_fixed_bytes(),
+                storage_root.to_fixed_bytes(),
+                block.hash.unwrap().to_fixed_bytes(),
+            ]
+            .concat(),
+        );
 
     H256::from_slice(&digest)
 }

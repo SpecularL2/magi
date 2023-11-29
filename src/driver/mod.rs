@@ -329,9 +329,9 @@ impl<E: Engine> Driver<E> {
         let new_finalized = self
             .unfinalized_blocks
             .iter()
-            .filter(|(_, _, inclusion, seq)| {
-                *inclusion <= self.finalized_l1_block_number && *seq == 0
-            })
+            .filter(
+                |(_, _, inclusion, seq)| *inclusion <= self.finalized_l1_block_number && *seq == 0
+            )
             .last();
 
         if let Some((head, epoch, _, _)) = new_finalized {

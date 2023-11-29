@@ -25,11 +25,9 @@ pub mod utils;
 static CONFIG_UPDATE_TOPIC: Lazy<H256> =
     Lazy::new(|| H256::from_slice(&keccak256("ConfigUpdate(uint256,uint8,bytes)")));
 
-static TRANSACTION_DEPOSITED_TOPIC: Lazy<H256> = Lazy::new(|| {
-    H256::from_slice(&keccak256(
-        "TransactionDeposited(address,address,uint256,bytes)",
-    ))
-});
+static TRANSACTION_DEPOSITED_TOPIC: Lazy<H256> = Lazy::new(
+    || H256::from_slice(&keccak256("TransactionDeposited(address,address,uint256,bytes)"))
+);
 
 /// Handles watching the L1 chain and monitoring for new blocks, deposits,
 /// and batcher transactions. The monitoring loop is spawned in a seperate
@@ -145,11 +143,12 @@ impl ChainWatcher {
             handle.abort();
         }
 
-        let (handle, recv) = start_watcher(
-            self.l1_start_block,
-            self.l2_start_block,
-            self.config.clone(),
-        )?;
+        let (handle, recv) =
+            start_watcher(
+                self.l1_start_block,
+                self.l2_start_block,
+                self.config.clone(),
+            )?;
 
         self.handle = Some(handle);
         self.block_update_receiver = Some(recv);
@@ -387,10 +386,11 @@ impl InnerWatcher {
     }
 
     async fn get_finalized(&self) -> Result<u64> {
-        let block_number = match self.config.devnet {
-            false => BlockNumber::Finalized,
-            true => BlockNumber::Latest,
-        };
+        let block_number =
+            match self.config.devnet {
+                false => BlockNumber::Finalized,
+                true => BlockNumber::Latest,
+            };
 
         Ok(self
             .provider

@@ -22,14 +22,13 @@ impl TryFrom<Block<Transaction>> for HeadInfo {
         // TODO[zhe]: Get specular-variant epoch info
         // TODO[zhe]: This is only called once when starting the driver
 
-        let tx_calldata = value
-            .transactions
-            .first()
-            .ok_or(eyre::eyre!(
-                "Could not find the L1 attributes deposited transaction"
-            ))?
-            .input
-            .clone();
+        let tx_calldata =
+            value
+                .transactions
+                .first()
+                .ok_or(eyre::eyre!("Could not find the L1 attributes deposited transaction"))?
+                .input
+                .clone();
 
         let call = AttributesDepositedCall::try_from(tx_calldata)?;
 

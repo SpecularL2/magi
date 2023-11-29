@@ -44,18 +44,20 @@ impl Iterator for Pipeline {
 impl Pipeline {
     pub fn new(state: Arc<RwLock<State>>, config: Arc<Config>, seq: u64) -> Result<Self> {
         let (tx, rx) = mpsc::channel();
-        let batch_iter: Box<dyn PurgeableIterator<Item = Batch>> =
-            if config.chain.meta.enable_full_derivation {
-                let batcher_transactions = BatcherTransactions::new(rx);
-                let channels = Channels::new(batcher_transactions, config.clone());
-                let batches = Batches::new(channels, state.clone(), config.clone());
-                Box::new(batches)
-            } else {
-                let batcher_transactions = SpecularBatcherTransactions::new(rx);
-                let batches =
-                    SpecularBatches::new(batcher_transactions, state.clone(), config.clone());
-                Box::new(batches)
-            };
+        let batch_iter: Box<dyn PurgeableIterator<Item = Batch>> = if config
+            .chain
+            .meta
+            .enable_full_derivation
+        {
+            let batcher_transactions = BatcherTransactions::new(rx);
+            let channels = Channels::new(batcher_transactions, config.clone());
+            let batches = Batches::new(channels, state.clone(), config.clone());
+            Box::new(batches)
+        } else {
+            let batcher_transactions = SpecularBatcherTransactions::new(rx);
+            let batches = SpecularBatches::new(batcher_transactions, state.clone(), config.clone());
+            Box::new(batches)
+        };
         let attributes = Attributes::new(batch_iter, state, config, seq);
 
         Ok(Self {
@@ -124,12 +126,13 @@ mod tests {
                 local_sequencer: Default::default(),
             });
 
-            let mut chain_watcher = ChainWatcher::new(
-                config.chain.l1_start_epoch.number,
-                config.chain.l2_genesis.number,
-                config.clone(),
-            )
-            .unwrap();
+            let mut chain_watcher =
+                ChainWatcher::new(
+                    config.chain.l1_start_epoch.number,
+                    config.chain.l2_genesis.number,
+                    config.clone(),
+                )
+                .unwrap();
 
             chain_watcher.start().unwrap();
 
