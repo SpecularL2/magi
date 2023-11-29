@@ -1,6 +1,6 @@
 use crate::common::Epoch;
 use crate::config::Config;
-use crate::driver::types::HeadInfo;
+use crate::driver::HeadInfo;
 use ethers::middleware::Middleware;
 use ethers::providers::{JsonRpcClient, Provider, ProviderError};
 use ethers::types::{Address, Block, BlockId, BlockNumber, Transaction, H256};

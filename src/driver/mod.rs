@@ -34,7 +34,7 @@ use self::engine_driver::{handle_attributes, ChainHeadType, EngineDriver};
 pub mod engine_driver;
 mod info;
 pub mod sequencing;
-pub mod types;
+mod types;
 pub use types::*;
 
 /// Driver is responsible for advancing the execution node by feeding
