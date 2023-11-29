@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use std::sync::{Arc, RwLock};
 
 use ethers::types::H256;
+use ethers::utils::rlp::Rlp;
 use eyre::Result;
 
 use crate::common::RawTransaction;
@@ -12,7 +13,6 @@ use crate::config::Config;
 use crate::derive::stages::batches::Batch;
 use crate::derive::state::State;
 use crate::derive::PurgeableIterator;
-use ethers::utils::rlp::Rlp;
 
 use super::batcher_transactions::SpecularBatcherTransaction;
 use crate::specular::common::SetL1OracleValuesInput;
