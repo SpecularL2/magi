@@ -22,7 +22,7 @@ use crate::{
     engine::{Engine, EngineApi, ExecutionPayload},
     l1::{BlockUpdate, ChainWatcher},
     network::{handlers::block_handler::BlockHandler, service::Service},
-    rpc,
+    rpc, specular,
     telemetry::metrics,
 };
 
@@ -31,7 +31,7 @@ use self::engine_driver::EngineDriver;
 mod engine_driver;
 mod info;
 pub mod sequencing;
-mod types;
+pub mod types;
 pub use types::*;
 
 /// Driver is responsible for advancing the execution node by feeding
@@ -78,9 +78,16 @@ impl<S: sequencing::SequencingSource<EngineApi>> Driver<EngineApi, S> {
         let http = Http::new_with_client(Url::parse(&config.l2_rpc_url)?, client);
         let provider = Provider::new(http);
 
-        let head =
+        let head = if config.chain.meta.enable_deposited_txs {
             info::HeadInfoQuery::get_head_info(&info::HeadInfoFetcher::from(&provider), &config)
-                .await;
+                .await
+        } else {
+            specular::info::HeadInfoQuery::get_head_info(
+                &specular::info::HeadInfoFetcher::from(&provider),
+                &config,
+            )
+            .await
+        };
 
         let finalized_head = head.l2_block_info;
         let finalized_epoch = head.l1_epoch;
