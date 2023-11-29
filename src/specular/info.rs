@@ -286,6 +286,14 @@ mod tests {
         );
         let config = test_utils::optimism_config();
         let head_info = HeadInfoQuery::get_head_info(&provider, &config).await;
-        assert_eq!(test_utils::default_head_info(), head_info);
+        // In Optimism's case their `valid_block` does not contain the AttributeDeposit transaction
+        // so their `get_head_info` will fallback to the genesis head.
+        // However in our case we get the epoch from the storage, so we can get the correct head info.
+        let expected = HeadInfo {
+            l2_block_info: test_utils::valid_block().unwrap().try_into().unwrap(),
+            l1_epoch: test_utils::default_head_info().l1_epoch,
+            sequence_number: 1, // expected behavior
+        };
+        assert_eq!(expected, head_info);
     }
 }
