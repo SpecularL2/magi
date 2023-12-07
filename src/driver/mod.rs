@@ -6,7 +6,7 @@ use std::{
 
 use ethers::{
     providers::{Http, Provider},
-    types::Address,
+    types::{Address, BlockNumber},
 };
 use eyre::Result;
 use reqwest::Url;
@@ -75,16 +75,30 @@ impl Driver<EngineApi> {
         let http = Http::new_with_client(Url::parse(&config.l2_rpc_url)?, client);
         let provider = Provider::new(http);
 
-        let head = if config.chain.meta.enable_deposited_txs {
-            info::HeadInfoQuery::get_head_info(&info::HeadInfoFetcher::from(&provider), &config)
-                .await
-        } else {
-            specular::info::HeadInfoQuery::get_head_info(
-                &specular::info::HeadInfoFetcher::from(&provider),
-                &config,
-            )
-            .await
-        };
+        macro_rules! get_head_info {
+            ($bn:expr) => {
+                if config.chain.meta.enable_deposited_txs {
+                    info::HeadInfoQuery::get_head_info(
+                        &info::HeadInfoFetcher::from(&provider),
+                        &config,
+                        $bn,
+                    )
+                    .await
+                } else {
+                    specular::info::HeadInfoQuery::get_head_info(
+                        &specular::info::HeadInfoFetcher::from(&provider),
+                        &config,
+                        $bn,
+                    )
+                    .await
+                }
+            };
+        }
+
+        let head = get_head_info!(BlockNumber::Finalized);
+        // TODO[maciej]
+        let safe_head = get_head_info!(BlockNumber::Safe);
+        let latest_head = get_head_info!(BlockNumber::Latest);
 
         let finalized_head = head.l2_block_info;
         let finalized_epoch = head.l1_epoch;
