@@ -16,10 +16,10 @@ use crate::derive::PurgeableStream;
 use crate::engine::PayloadAttributes;
 use crate::l1::L1Info;
 
-use super::batches::Batch;
+use super::batches::{Batches, Batch};
 
 pub struct Attributes {
-    batch_iter: Box<dyn Stream<Item = Batch> + PurgeableStream<Item = Batch>>,
+    batch_iter: Batches,
     state: Arc<RwLock<State>>,
     sequence_number: u64,
     epoch_hash: H256,
@@ -33,10 +33,12 @@ impl Stream for Attributes {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>
     ) -> Poll<Option<Self::Item>> {
-        let s = Pin::into_inner(self);
-        s.batch_iter
-            .poll_next(cx)
-            .map(|batch| self.derive_attributes(batch))
+        todo!()
+        //let s = Pin::into_inner(self);
+        //let batch_iter = Pin::into_inner(s.batch_iter).as_ref();
+        //batch_iter
+            //.poll_next(cx)
+            //.map(|batch| self.derive_attributes(batch))
     }
 }
 
@@ -68,7 +70,7 @@ impl PurgeableStream for Attributes {
 
 impl Attributes {
     pub fn new(
-        batch_iter: Box<dyn PurgeableStream<Item = Batch>>,
+        batch_iter: Batches,
         state: Arc<RwLock<State>>,
         config: Arc<Config>,
         seq: u64,

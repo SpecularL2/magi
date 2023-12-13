@@ -39,12 +39,13 @@ impl Stream for Pipeline {
       self: Pin<&mut Self>,
       cx: &mut Context<'_>
     ) -> Poll<Option<Self::Item>> {
-          todo!()
-          //if self.pending_attributes.is_some() {
-              //Poll::Ready(self.pending_attributes.take())
-          //} else {
-              //self.attributes.poll_next()
-          //}
+        todo!()
+        //let s = Pin::into_inner(self);
+        //if s.pending_attributes.is_some() {
+            //Poll::Ready(s.pending_attributes.take())
+        //} else {
+            //Stream::poll_next(tokio::pin!(s.attributes), cx)
+        //}
     }
 }
 
@@ -63,18 +64,18 @@ impl Stream for Pipeline {
 impl Pipeline {
     pub fn new(state: Arc<RwLock<State>>, config: Arc<Config>, seq: u64) -> Result<Self> {
         let (tx, rx) = mpsc::channel();
-        let batch_iter: Box<dyn PurgeableStream<Item = Batch>> =
-            if config.chain.meta.enable_full_derivation {
-                let batcher_transactions = BatcherTransactions::new(rx);
-                let channels = Channels::new(batcher_transactions, config.clone());
-                let batches = Batches::new(channels, state.clone(), config.clone());
-                Box::new(batches)
-            } else {
-                let batcher_transactions = SpecularBatcherTransactions::new(rx);
-                let batches =
-                    SpecularBatches::new(batcher_transactions, state.clone(), config.clone());
-                Box::new(batches)
-            };
+        let batch_iter: Batches = todo!();
+            //if config.chain.meta.enable_full_derivation {
+                //let batcher_transactions = BatcherTransactions::new(rx);
+                //let channels = Channels::new(batcher_transactions, config.clone());
+                //let batches = Batches::new(channels, state.clone(), config.clone());
+                //Box::pin(batches)
+            //} else {
+                //let batcher_transactions = SpecularBatcherTransactions::new(rx);
+                //let batches =
+                    //SpecularBatches::new(batcher_transactions, state.clone(), config.clone());
+                //Box::pin(batches)
+            //};
         let attributes = Attributes::new(batch_iter, state, config, seq);
 
         Ok(Self {

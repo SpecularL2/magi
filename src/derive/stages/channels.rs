@@ -5,11 +5,11 @@ use std::task::{Context, Poll};
 
 use tokio_stream::{Stream, StreamExt};
 
-use super::batcher_transactions::{BatcherTransaction, Frame};
+use super::batcher_transactions::{BatcherTransactions, BatcherTransaction, Frame};
 use crate::{config::Config, derive::PurgeableStream};
 
-pub struct Channels<I> {
-    batcher_tx_iter: I,
+pub struct Channels {
+    batcher_tx_iter: BatcherTransactions,
     /// List of incomplete channels
     pending_channels: Vec<PendingChannel>,
     /// A bank of frames and their version numbers pulled from a [BatcherTransaction]
@@ -20,10 +20,7 @@ pub struct Channels<I> {
     channel_timeout: u64,
 }
 
-impl<I> Stream for Channels<I>
-where
-    I: Stream<Item = BatcherTransaction> + Unpin
-{
+impl Stream for Channels {
     type Item = Channel;
 
     fn poll_next(
@@ -35,16 +32,51 @@ where
     }
 }
 
-impl<I> PurgeableStream for Channels<I>
-where
-    I: PurgeableStream<Item = BatcherTransaction> + Unpin,
-{
+impl PurgeableStream for Channels {
     fn purge(&mut self) {
         self.batcher_tx_iter.purge();
         self.pending_channels.clear();
         self.frame_bank.clear();
     }
 }
+
+//pub struct Channels<I> {
+    //batcher_tx_iter: I,
+    ///// List of incomplete channels
+    //pending_channels: Vec<PendingChannel>,
+    ///// A bank of frames and their version numbers pulled from a [BatcherTransaction]
+    //frame_bank: Vec<Frame>,
+    ///// The maximum total byte size of pending channels to hold in the bank
+    //max_channel_size: u64,
+    ///// The max timeout for a channel (as measured by the frame L1 block number)
+    //channel_timeout: u64,
+//}
+
+//impl<I> Stream for Channels<I>
+//where
+    //I: Stream<Item = BatcherTransaction> + Unpin
+//{
+    //type Item = Channel;
+
+    //fn poll_next(
+        //self: Pin<&mut Self>,
+        //cx: &mut Context<'_>
+    //) -> Poll<Option<Self::Item>> {
+        //let s = Pin::into_inner(self);
+        //Poll::Ready(s.process_frames())
+    //}
+//}
+
+//impl<I> PurgeableStream for Channels<I>
+//where
+    //I: PurgeableStream<Item = BatcherTransaction> + Unpin,
+//{
+    //fn purge(&mut self) {
+        //self.batcher_tx_iter.purge();
+        //self.pending_channels.clear();
+        //self.frame_bank.clear();
+    //}
+//}
 
 //impl<I> Iterator for Channels<I>
 //where
@@ -68,8 +100,8 @@ where
     //}
 //}
 
-impl<I> Channels<I> {
-    pub fn new(batcher_tx_iter: I, config: Arc<Config>) -> Self {
+impl Channels {
+    pub fn new(batcher_tx_iter: BatcherTransactions, config: Arc<Config>) -> Self {
         Self {
             batcher_tx_iter,
             pending_channels: Vec::new(),
@@ -78,12 +110,7 @@ impl<I> Channels<I> {
             channel_timeout: config.chain.channel_timeout,
         }
     }
-}
-
-impl<I> Channels<I>
-where
-    I: Stream<Item = BatcherTransaction> + Unpin,
-{
+    
     /// Pushes a frame into the correct pending channel
     fn push_frame(&mut self, frame: Frame) {
         // Find a pending channel matching on the channel id
@@ -168,6 +195,107 @@ where
         }
     }
 }
+
+//impl<I> Channels<I> {
+    //pub fn new(batcher_tx_iter: I, config: Arc<Config>) -> Self {
+        //Self {
+            //batcher_tx_iter,
+            //pending_channels: Vec::new(),
+            //frame_bank: Vec::new(),
+            //max_channel_size: config.chain.max_channel_size,
+            //channel_timeout: config.chain.channel_timeout,
+        //}
+    //}
+//}
+
+//impl<I> Channels<I>
+//where
+    //I: Stream<Item = BatcherTransaction> + Unpin,
+//{
+    ///// Pushes a frame into the correct pending channel
+    //fn push_frame(&mut self, frame: Frame) {
+        //// Find a pending channel matching on the channel id
+        //let pending_index = self
+            //.pending_channels
+            //.iter_mut()
+            //.position(|c| c.channel_id == frame.channel_id);
+
+        //// Insert frame if pending channel exists
+        //// Otherwise, construct a new pending channel with the frame's id
+        //if let Some(pending_index) = pending_index {
+            //self.pending_channels[pending_index].push_frame(frame);
+
+            //if self.pending_channels[pending_index].is_timed_out(self.channel_timeout) {
+                //self.pending_channels.remove(pending_index);
+            //}
+        //} else {
+            //let pending = PendingChannel::new(frame);
+            //self.pending_channels.push(pending);
+        //}
+    //}
+
+    ///// Pull the next batcher transaction from the [BatcherTransactions] stage
+    //async fn fill_bank(&mut self) {
+        //if let Some(tx) = self.batcher_tx_iter.next().await {
+            //self.frame_bank.append(&mut tx.frames.to_vec());
+        //}
+    //}
+
+    ///// Fetch the completed channel if it is ready
+    //fn fetch_ready_channel(&mut self, id: u128) -> Option<Channel> {
+        //let channel_index = self
+            //.pending_channels
+            //.iter()
+            //.position(|c| c.channel_id == id && c.is_complete());
+
+        //channel_index.map(|index| {
+            //let pc = self.pending_channels.remove(index);
+            //Channel::from(pc)
+        //})
+    //}
+
+    ///// Processes frames until there are either none left or a channel is ready
+    //fn process_frames(&mut self) -> Option<Channel> {
+        //self.fill_bank();
+
+        //while !self.frame_bank.is_empty() {
+            //// Append the frame to the channel
+            //let frame = self.frame_bank.remove(0);
+            //let frame_channel_id = frame.channel_id;
+            //self.push_frame(frame);
+            //self.prune();
+
+            //if let Some(channel) = self.fetch_ready_channel(frame_channel_id) {
+                //return Some(channel);
+            //}
+        //}
+
+        //None
+    //}
+
+    ///// Removes a pending channel from the bank
+    //fn remove(&mut self) -> Option<PendingChannel> {
+        //match self.pending_channels.is_empty() {
+            //true => None,
+            //false => Some(self.pending_channels.remove(0)),
+        //}
+    //}
+
+    ///// Gets the total size of all pending channels
+    //fn total_size(&self) -> u64 {
+        //self.pending_channels
+            //.iter()
+            //.map(|p| p.frames.iter().fold(0, |a, f| a + f.frame_data_len))
+            //.sum::<u32>() as u64
+    //}
+
+    ///// Prunes channels to the max size
+    //fn prune(&mut self) {
+        //while self.total_size() > self.max_channel_size {
+            //self.remove().expect("should have removed a channel");
+        //}
+    //}
+//}
 
 /// An intermediate pending channel
 #[derive(Debug)]

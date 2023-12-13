@@ -92,6 +92,21 @@ where
     //}
 //}
 
+impl<I> SpecularBatches<I> {
+    pub fn new(
+        batcher_transaction_iter: I,
+        state: Arc<RwLock<State>>,
+        config: Arc<Config>,
+    ) -> Self {
+        Self {
+            batches: BTreeMap::new(),
+            batcher_transaction_iter,
+            state,
+            config,
+        }
+    }
+}
+
 impl<I> SpecularBatches<I>
 where
     I: Stream<Item = SpecularBatcherTransaction> + Unpin,
