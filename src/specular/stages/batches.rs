@@ -1,18 +1,26 @@
-use std::collections::BTreeMap;
-
 use core::fmt::Debug;
+
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
+use std::marker::Unpin;
+use std::pin::Pin;
 use std::sync::{Arc, RwLock};
+use std::task::{Context, Poll};
 
 use ethers::types::H256;
 use ethers::utils::rlp::Rlp;
+//use ethers::{
+    //types::Transaction,
+    //utils::rlp::{Decodable, Rlp},
+//};
 use eyre::Result;
+use tokio_stream::{Stream, StreamExt};
 
 use crate::common::RawTransaction;
 use crate::config::Config;
 use crate::derive::stages::batches::Batch;
 use crate::derive::state::State;
-use crate::derive::PurgeableIterator;
+use crate::derive::PurgeableStream;
 
 use super::batcher_transactions::SpecularBatcherTransaction;
 use crate::specular::common::SetL1OracleValuesInput;
@@ -29,23 +37,30 @@ pub struct SpecularBatches<I> {
     config: Arc<Config>,
 }
 
-impl<I> Iterator for SpecularBatches<I>
+impl<I> Stream for SpecularBatches<I>
 where
-    I: Iterator<Item = SpecularBatcherTransaction>,
+    I: Stream<Item = SpecularBatcherTransaction>
 {
     type Item = Batch;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.try_next().unwrap_or_else(|_| {
-            tracing::debug!("Failed to decode batch");
-            None
-        })
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>
+    ) -> Poll<Option<Self::Item>> {
+        todo!()
+        //match self.try_next().unwrap_or_else(|_| {
+            //tracing::debug!("Failed to decode batch");
+            //Poll::Pending
+        //}) {
+            //Some(batch) => Poll::Ready(Some(batch)),
+            //None => Poll::Pending,
+        //}
     }
 }
 
-impl<I> PurgeableIterator for SpecularBatches<I>
+impl<I> PurgeableStream for SpecularBatches<I>
 where
-    I: PurgeableIterator<Item = SpecularBatcherTransaction>,
+    I: PurgeableStream<Item = SpecularBatcherTransaction>
 {
     fn purge(&mut self) {
         self.batcher_transaction_iter.purge();
@@ -53,30 +68,38 @@ where
     }
 }
 
-impl<I> SpecularBatches<I> {
-    pub fn new(
-        batcher_transaction_iter: I,
-        state: Arc<RwLock<State>>,
-        config: Arc<Config>,
-    ) -> Self {
-        Self {
-            batches: BTreeMap::new(),
-            batcher_transaction_iter,
-            state,
-            config,
-        }
-    }
-}
+//impl<I> Iterator for SpecularBatches<I>
+//where
+    //I: Iterator<Item = SpecularBatcherTransaction>,
+//{
+    //type Item = Batch;
+
+    //fn next(&mut self) -> Option<Self::Item> {
+        //self.try_next().unwrap_or_else(|_| {
+            //tracing::debug!("Failed to decode batch");
+            //None
+        //})
+    //}
+//}
+
+//impl<I> PurgeableIterator for SpecularBatches<I>
+//where
+    //I: PurgeableIterator<Item = SpecularBatcherTransaction>,
+//{
+    //fn purge(&mut self) {
+        //self.batcher_transaction_iter.purge();
+        //self.batches.clear();
+    //}
+//}
 
 impl<I> SpecularBatches<I>
 where
-    I: Iterator<Item = SpecularBatcherTransaction>,
+    I: Stream<Item = SpecularBatcherTransaction> + Unpin,
 {
     /// This function tries to decode batches from the next [SpecularBatcherTransaction] and
     /// returns the first valid batch if possible.
-    fn try_next(&mut self) -> Result<Option<Batch>> {
-        let batcher_transaction = self.batcher_transaction_iter.next();
-        if let Some(batcher_transaction) = batcher_transaction {
+    async fn try_next(&mut self) -> Result<Option<Batch>> {
+        if let Some(batcher_transaction) = self.batcher_transaction_iter.next().await {
             let batches = decode_batches(&batcher_transaction, &self.state, &self.config)?;
             batches.into_iter().for_each(|batch| {
                 tracing::debug!(

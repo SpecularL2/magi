@@ -1,11 +1,14 @@
+use std::collections::VecDeque;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::sync::mpsc;
 
 use ethers::types::Bytes;
 use eyre::Result;
-use std::collections::VecDeque;
+use tokio_stream::Stream;
 
 use crate::derive::stages::batcher_transactions::BatcherTransactionMessage;
-use crate::derive::PurgeableIterator;
+use crate::derive::PurgeableStream;
 use crate::specular::common::{AppendTxBatchInput, APPEND_TX_BATCH_ABI, APPEND_TX_BATCH_SELECTOR};
 
 /// The first stage in Specular's derivation pipeline.
@@ -15,22 +18,43 @@ pub struct SpecularBatcherTransactions {
     transaction_rx: mpsc::Receiver<BatcherTransactionMessage>,
 }
 
-impl Iterator for SpecularBatcherTransactions {
+impl Stream for SpecularBatcherTransactions {
     type Item = SpecularBatcherTransaction;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.process_incoming();
-        self.txs.pop_front()
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>
+    ) -> Poll<Option<Self::Item>> {
+        todo!()
+        //self.process_incoming();
+        //Poll::Ready(self.txs.pop_front())
     }
 }
 
-impl PurgeableIterator for SpecularBatcherTransactions {
+impl PurgeableStream for SpecularBatcherTransactions {
     fn purge(&mut self) {
         // drain the channel first
         while self.transaction_rx.try_recv().is_ok() {}
         self.txs.clear();
     }
 }
+
+//impl Iterator for SpecularBatcherTransactions {
+    //type Item = SpecularBatcherTransaction;
+
+    //fn next(&mut self) -> Option<Self::Item> {
+        //self.process_incoming();
+        //self.txs.pop_front()
+    //}
+//}
+
+//impl PurgeableIterator for SpecularBatcherTransactions {
+    //fn purge(&mut self) {
+        //// drain the channel first
+        //while self.transaction_rx.try_recv().is_ok() {}
+        //self.txs.clear();
+    //}
+//}
 
 impl SpecularBatcherTransactions {
     pub fn new(transaction_rx: mpsc::Receiver<BatcherTransactionMessage>) -> Self {
