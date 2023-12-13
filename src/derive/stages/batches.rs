@@ -2,18 +2,22 @@ use core::fmt::Debug;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::io::Read;
+use std::marker::Unpin;
+use std::pin::Pin;
 use std::sync::{Arc, RwLock};
+use std::task::{Context, Poll};
 
 use ethers::types::H256;
 use ethers::utils::rlp::{DecoderError, Rlp};
 
 use eyre::Result;
 use libflate::zlib::Decoder;
+use tokio_stream::{Stream, StreamExt};
 
 use crate::common::RawTransaction;
 use crate::config::Config;
 use crate::derive::state::State;
-use crate::derive::PurgeableIterator;
+use crate::derive::PurgeableStream;
 
 use super::channels::Channel;
 
@@ -25,29 +29,57 @@ pub struct Batches<I> {
     config: Arc<Config>,
 }
 
-impl<I> Iterator for Batches<I>
+impl<I> Stream for Batches<I>
 where
-    I: Iterator<Item = Channel>,
+    I: Stream<Item = Channel> + Unpin,
 {
     type Item = Batch;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.try_next().unwrap_or_else(|_| {
-            tracing::debug!("Failed to decode batch");
-            None
-        })
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>
+    ) -> Poll<Option<Self::Item>> {
+        todo!()
+        //self.try_get_next().unwrap_or_else(|_| {
+            //tracing::debug!("Failed to decode batch");
+            //Poll::Pending
+        //})
     }
 }
 
-impl<I> PurgeableIterator for Batches<I>
+impl<I> PurgeableStream for Batches<I>
 where
-    I: PurgeableIterator<Item = Channel>,
+    I: PurgeableStream<Item = Channel> + Unpin,
 {
     fn purge(&mut self) {
         self.channel_iter.purge();
         self.batches.clear();
     }
 }
+
+//impl<I> Iterator for Batches<I>
+//where
+    //I: Iterator<Item = Channel>,
+//{
+    //type Item = Batch;
+
+    //fn next(&mut self) -> Option<Self::Item> {
+        //self.try_next().unwrap_or_else(|_| {
+            //tracing::debug!("Failed to decode batch");
+            //None
+        //})
+    //}
+//}
+
+//impl<I> PurgeableIterator for Batches<I>
+//where
+    //I: PurgeableIterator<Item = Channel>,
+//{
+    //fn purge(&mut self) {
+        //self.channel_iter.purge();
+        //self.batches.clear();
+    //}
+//}
 
 impl<I> Batches<I> {
     pub fn new(channel_iter: I, state: Arc<RwLock<State>>, config: Arc<Config>) -> Self {
@@ -62,11 +94,12 @@ impl<I> Batches<I> {
 
 impl<I> Batches<I>
 where
-    I: Iterator<Item = Channel>,
+    I: Stream<Item = Channel> + Unpin,
 {
-    fn try_next(&mut self) -> Result<Option<Batch>> {
-        let channel = self.channel_iter.next();
-        if let Some(channel) = channel {
+    async fn try_get_next(&mut self) -> Result<Option<Batch>> {
+
+        // Fetch the batches from the channel, decode, and insert into internal BTreeMap
+        if let Some(channel) = self.channel_iter.next().await {
             let batches = decode_batches(&channel)?;
             batches.into_iter().for_each(|batch| {
                 tracing::debug!(
@@ -79,6 +112,7 @@ where
             });
         }
 
+        // See if there are any batches in the BTreeMap that can be processed
         let derived_batch = loop {
             if let Some((_, batch)) = self.batches.first_key_value() {
                 match self.batch_status(batch) {
@@ -97,10 +131,12 @@ where
                     }
                 }
             } else {
-                break None;
+              break None;
             }
         };
 
+        // If there is nothing to process, generate empty batch
+        // then return the most recent batch or return the empty
         let batch = if derived_batch.is_none() {
             let state = self.state.read().unwrap();
 

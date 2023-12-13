@@ -1,6 +1,9 @@
+use std::pin::Pin;
 use std::sync::{mpsc, Arc, RwLock};
+use std::task::{Context, Poll};
 
 use eyre::Result;
+use tokio_stream::{Stream, StreamExt};
 
 use crate::specular::stages::{
     batcher_transactions::SpecularBatcherTransactions, batches::SpecularBatches,
@@ -21,7 +24,7 @@ pub mod stages;
 pub mod state;
 
 mod purgeable;
-pub use purgeable::PurgeableIterator;
+pub use purgeable::PurgeableStream;
 
 pub struct Pipeline {
     batcher_transaction_sender: mpsc::Sender<BatcherTransactionMessage>,
@@ -29,22 +32,38 @@ pub struct Pipeline {
     pending_attributes: Option<PayloadAttributes>,
 }
 
-impl Iterator for Pipeline {
+impl Stream for Pipeline {
     type Item = PayloadAttributes;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.pending_attributes.is_some() {
-            self.pending_attributes.take()
-        } else {
-            self.attributes.next()
-        }
+    fn poll_next(
+      self: Pin<&mut Self>,
+      cx: &mut Context<'_>
+    ) -> Poll<Option<Self::Item>> {
+          todo!()
+          //if self.pending_attributes.is_some() {
+              //Poll::Ready(self.pending_attributes.take())
+          //} else {
+              //self.attributes.poll_next()
+          //}
     }
 }
+
+//impl Iterator for Pipeline {
+    //type Item = PayloadAttributes;
+
+    //fn next(&mut self) -> Option<Self::Item> {
+        //if self.pending_attributes.is_some() {
+            //self.pending_attributes.take()
+        //} else {
+            //self.attributes.next()
+        //}
+    //}
+//}
 
 impl Pipeline {
     pub fn new(state: Arc<RwLock<State>>, config: Arc<Config>, seq: u64) -> Result<Self> {
         let (tx, rx) = mpsc::channel();
-        let batch_iter: Box<dyn PurgeableIterator<Item = Batch>> =
+        let batch_iter: Box<dyn PurgeableStream<Item = Batch>> =
             if config.chain.meta.enable_full_derivation {
                 let batcher_transactions = BatcherTransactions::new(rx);
                 let channels = Channels::new(batcher_transactions, config.clone());
@@ -71,9 +90,10 @@ impl Pipeline {
         Ok(())
     }
 
-    pub fn peek(&mut self) -> Option<&PayloadAttributes> {
+    // TODO: may be able to remove `pending_attributes` now that this is lazy
+    pub async fn peek(&mut self) -> Option<&PayloadAttributes> {
         if self.pending_attributes.is_none() {
-            let next_attributes = self.next();
+            let next_attributes = self.next().await;
             self.pending_attributes = next_attributes;
         }
 
@@ -158,12 +178,11 @@ mod tests {
 
             state.write().unwrap().update_l1_info(l1_info);
 
-            if let Some(payload) = pipeline.next() {
-                let hashes = get_tx_hashes(&payload.transactions.unwrap());
-                let expected_hashes = get_expected_hashes(config.chain.l2_genesis.number + 1).await;
+            let payload = pipeline.next().await;
+            let hashes = get_tx_hashes(&payload.transactions.unwrap());
+            let expected_hashes = get_expected_hashes(config.chain.l2_genesis.number + 1).await;
 
-                assert_eq!(hashes, expected_hashes);
-            }
+            assert_eq!(hashes, expected_hashes);
         }
     }
 

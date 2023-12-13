@@ -1,39 +1,46 @@
+use std::pin::Pin;
 use std::sync::{Arc, RwLock};
+use std::task::{Context, Poll};
 
 use ethers::abi::{decode, encode, ParamType, Token};
 use ethers::types::{Address, Log, H256, U256, U64};
 use ethers::utils::{keccak256, rlp::Encodable, rlp::RlpStream};
 
 use eyre::Result;
+use tokio_stream::{Stream, StreamExt};
 
 use crate::common::{Epoch, RawTransaction};
 use crate::config::{Config, SystemAccounts};
 use crate::derive::state::State;
-use crate::derive::PurgeableIterator;
+use crate::derive::PurgeableStream;
 use crate::engine::PayloadAttributes;
 use crate::l1::L1Info;
 
 use super::batches::Batch;
 
 pub struct Attributes {
-    batch_iter: Box<dyn PurgeableIterator<Item = Batch>>,
+    batch_iter: Box<dyn Stream<Item = Batch> + PurgeableStream<Item = Batch>>,
     state: Arc<RwLock<State>>,
     sequence_number: u64,
     epoch_hash: H256,
     config: Arc<Config>,
 }
 
-impl Iterator for Attributes {
+impl Stream for Attributes {
     type Item = PayloadAttributes;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.batch_iter
-            .next()
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>
+    ) -> Poll<Option<Self::Item>> {
+        let s = Pin::into_inner(self);
+        s.batch_iter
+            .poll_next(cx)
             .map(|batch| self.derive_attributes(batch))
     }
 }
 
-impl PurgeableIterator for Attributes {
+impl PurgeableStream for Attributes {
     fn purge(&mut self) {
         self.batch_iter.purge();
         self.sequence_number = 0;
@@ -41,9 +48,27 @@ impl PurgeableIterator for Attributes {
     }
 }
 
+//impl Iterator for Attributes {
+    //type Item = PayloadAttributes;
+
+    //fn next(&mut self) -> Option<Self::Item> {
+        //self.batch_iter
+            //.next()
+            //.map(|batch| self.derive_attributes(batch))
+    //}
+//}
+
+//impl PurgeableIterator for Attributes {
+    //fn purge(&mut self) {
+        //self.batch_iter.purge();
+        //self.sequence_number = 0;
+        //self.epoch_hash = self.state.read().unwrap().safe_epoch.hash;
+    //}
+//}
+
 impl Attributes {
     pub fn new(
-        batch_iter: Box<dyn PurgeableIterator<Item = Batch>>,
+        batch_iter: Box<dyn PurgeableStream<Item = Batch>>,
         state: Arc<RwLock<State>>,
         config: Arc<Config>,
         seq: u64,
@@ -323,8 +348,8 @@ impl TryFrom<Log> for UserDeposited {
             .into_bytes()
             .unwrap();
 
-        let from = Address::from(log.topics[1]);
-        let to = Address::from(log.topics[2]);
+        let from = Address::try_from(log.topics[1])?;
+        let to = Address::try_from(log.topics[2])?;
         let mint = U256::from_big_endian(&opaque_data[0..32]);
         let value = U256::from_big_endian(&opaque_data[32..64]);
         let gas = u64::from_be_bytes(opaque_data[64..72].try_into()?);

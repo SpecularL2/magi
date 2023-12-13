@@ -1,4 +1,10 @@
 /// Iterator that can purge itself
-pub trait PurgeableIterator: Iterator {
+use tokio_stream::Stream;
+
+//pub trait PurgeableIterator: Iterator {
+    //fn purge(&mut self);
+//}
+
+pub trait PurgeableStream: Stream {
     fn purge(&mut self);
 }

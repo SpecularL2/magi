@@ -1,9 +1,12 @@
+use std::collections::VecDeque;
+use std::pin::Pin;
 use std::sync::mpsc;
+use std::task::{Context, Poll};
 
 use eyre::Result;
-use std::collections::VecDeque;
+use tokio_stream::Stream;
 
-use crate::derive::PurgeableIterator;
+use crate::derive::PurgeableStream;
 
 pub struct BatcherTransactionMessage {
     pub txs: Vec<Vec<u8>>,
@@ -15,22 +18,43 @@ pub struct BatcherTransactions {
     transaction_rx: mpsc::Receiver<BatcherTransactionMessage>,
 }
 
-impl Iterator for BatcherTransactions {
+impl Stream for BatcherTransactions {
     type Item = BatcherTransaction;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.process_incoming();
-        self.txs.pop_front()
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>
+    ) -> Poll<Option<Self::Item>> {
+        let s = Pin::into_inner(self);
+        s.process_incoming();
+        Poll::Ready(s.txs.pop_front())
     }
 }
 
-impl PurgeableIterator for BatcherTransactions {
+impl PurgeableStream for BatcherTransactions {
     fn purge(&mut self) {
         // drain the channel first
         while self.transaction_rx.try_recv().is_ok() {}
         self.txs.clear();
     }
 }
+
+//impl Iterator for BatcherTransactions {
+    //type Item = BatcherTransaction;
+
+    //fn next(&mut self) -> Option<Self::Item> {
+        //self.process_incoming();
+        //self.txs.pop_front()
+    //}
+//}
+
+//impl PurgeableIterator for BatcherTransactions {
+    //fn purge(&mut self) {
+        //// drain the channel first
+        //while self.transaction_rx.try_recv().is_ok() {}
+        //self.txs.clear();
+    //}
+//}
 
 impl BatcherTransactions {
     pub fn new(transaction_rx: mpsc::Receiver<BatcherTransactionMessage>) -> Self {
