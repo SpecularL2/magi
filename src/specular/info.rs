@@ -70,7 +70,7 @@ impl HeadInfoQuery {
             .ok()
             .flatten()
         {
-            if let Ok(info) = to_specular_head_info(p, block).await {
+            if let Ok(info) = to_specular_head_info(p, config, block).await {
                 return info;
             }
         }
@@ -85,6 +85,7 @@ impl HeadInfoQuery {
 
 async fn to_specular_head_info<P: InnerProvider>(
     p: &P,
+    config: &Config,
     block: Block<Transaction>,
 ) -> Result<HeadInfo> {
     if let Some(tx) = block.transactions.first() {
@@ -107,6 +108,11 @@ async fn to_specular_head_info<P: InnerProvider>(
         )
         .await?
         .to_low_u64_be();
+
+    if epoch_number < config.chain.l1_start_epoch.number {
+        eyre::bail!("L1Oracle is not initialized on L2 yet");
+    }
+
     let epoch_timestamp = p
         .get_storage_at(
             SystemAccounts::default().l1_oracle,
