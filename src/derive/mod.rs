@@ -162,7 +162,7 @@ mod tests {
 
             state.write().unwrap().update_l1_info(l1_info);
 
-            if let Some(payload) = pipeline.next() {
+            if let Some(payload) = pipeline.next().await {
                 let hashes = get_tx_hashes(&payload.transactions.unwrap());
                 let expected_hashes = get_expected_hashes(config.chain.l2_genesis.number + 1).await;
 
