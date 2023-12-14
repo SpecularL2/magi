@@ -1,9 +1,11 @@
 use std::sync::mpsc;
 
+use async_trait::async_trait;
 use eyre::Result;
 use std::collections::VecDeque;
 
-use crate::derive::PurgeableIterator;
+use crate::derive::async_iterator::AsyncIterator;
+use crate::derive::{PurgeableAsyncIterator, PurgeableIterator};
 
 pub struct BatcherTransactionMessage {
     pub txs: Vec<Vec<u8>>,
@@ -15,22 +17,41 @@ pub struct BatcherTransactions {
     transaction_rx: mpsc::Receiver<BatcherTransactionMessage>,
 }
 
-impl Iterator for BatcherTransactions {
+#[async_trait]
+impl AsyncIterator for BatcherTransactions {
     type Item = BatcherTransaction;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    async fn next(&mut self) -> Option<Self::Item> {
         self.process_incoming();
         self.txs.pop_front()
     }
 }
 
-impl PurgeableIterator for BatcherTransactions {
-    fn purge(&mut self) {
+#[async_trait]
+impl PurgeableAsyncIterator for BatcherTransactions {
+    async fn purge(&mut self) {
         // drain the channel first
         while self.transaction_rx.try_recv().is_ok() {}
         self.txs.clear();
     }
 }
+
+//impl Iterator for BatcherTransactions {
+    //type Item = BatcherTransaction;
+
+    //fn next(&mut self) -> Option<Self::Item> {
+        //self.process_incoming();
+        //self.txs.pop_front()
+    //}
+//}
+
+//impl PurgeableIterator for BatcherTransactions {
+    //fn purge(&mut self) {
+        //// drain the channel first
+        //while self.transaction_rx.try_recv().is_ok() {}
+        //self.txs.clear();
+    //}
+//}
 
 impl BatcherTransactions {
     pub fn new(transaction_rx: mpsc::Receiver<BatcherTransactionMessage>) -> Self {

@@ -10,7 +10,7 @@ use eyre::Result;
 use crate::common::{Epoch, RawTransaction};
 use crate::config::{Config, SystemAccounts};
 use crate::derive::state::State;
-use crate::derive::{PurgeableIterator, PurgeableAsyncIterator};
+use crate::derive::{PurgeableAsyncIterator, PurgeableIterator};
 use crate::derive::async_iterator::AsyncIterator;
 use crate::engine::PayloadAttributes;
 use crate::l1::L1Info;
@@ -18,7 +18,7 @@ use crate::l1::L1Info;
 use super::batches::Batch;
 
 pub struct Attributes {
-    batch_iter: Box<dyn PurgeableIterator<Item = Batch> + Send>,
+    batch_iter: Box<dyn PurgeableAsyncIterator<Item = Batch> + Send>,
     state: Arc<RwLock<State>>,
     sequence_number: u64,
     epoch_hash: H256,
@@ -31,13 +31,14 @@ impl AsyncIterator for Attributes {
 
     async fn next(&mut self) -> Option<Self::Item> {
         self.batch_iter
-            .next()
+            .next().await
             .map(|batch| self.derive_attributes(batch))
     }
 }
 
+#[async_trait]
 impl PurgeableAsyncIterator for Attributes {
-    fn purge(&mut self) {
+    async fn purge(&mut self) {
         self.batch_iter.purge();
         self.sequence_number = 0;
         self.epoch_hash = self.state.read().unwrap().safe_epoch.hash;
@@ -46,7 +47,7 @@ impl PurgeableAsyncIterator for Attributes {
 
 impl Attributes {
     pub fn new(
-        batch_iter: Box<dyn PurgeableIterator<Item = Batch> + Send>,
+        batch_iter: Box<dyn PurgeableAsyncIterator<Item = Batch> + Send>,
         state: Arc<RwLock<State>>,
         config: Arc<Config>,
         seq: u64,

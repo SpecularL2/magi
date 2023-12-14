@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::sync::{Arc, RwLock};
 
+use async_trait::async_trait;
 use ethers::types::H256;
 use ethers::utils::rlp::{DecoderError, Rlp};
 
@@ -13,7 +14,8 @@ use libflate::zlib::Decoder;
 use crate::common::RawTransaction;
 use crate::config::Config;
 use crate::derive::state::State;
-use crate::derive::PurgeableIterator;
+use crate::derive::async_iterator::AsyncIterator;
+use crate::derive::{PurgeableAsyncIterator, PurgeableIterator};
 
 use super::channels::Channel;
 
@@ -25,29 +27,55 @@ pub struct Batches<I> {
     config: Arc<Config>,
 }
 
-impl<I> Iterator for Batches<I>
+#[async_trait]
+impl<I> AsyncIterator for Batches<I>
 where
-    I: Iterator<Item = Channel>,
+    I: AsyncIterator<Item = Channel> + Send,
 {
     type Item = Batch;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.try_next().unwrap_or_else(|_| {
+    async fn next(&mut self) -> Option<Self::Item> {
+        self.try_next().await.unwrap_or_else(|_| {
             tracing::debug!("Failed to decode batch");
             None
         })
     }
 }
 
-impl<I> PurgeableIterator for Batches<I>
+#[async_trait]
+impl<I> PurgeableAsyncIterator for Batches<I> 
 where
-    I: PurgeableIterator<Item = Channel>,
+    I: PurgeableAsyncIterator<Item = Channel> + Send,
 {
-    fn purge(&mut self) {
+    async fn purge(&mut self) {
         self.channel_iter.purge();
         self.batches.clear();
     }
 }
+
+//impl<I> Iterator for Batches<I>
+//where
+    //I: Iterator<Item = Channel>,
+//{
+    //type Item = Batch;
+
+    //fn next(&mut self) -> Option<Self::Item> {
+        //self.try_next().unwrap_or_else(|_| {
+            //tracing::debug!("Failed to decode batch");
+            //None
+        //})
+    //}
+//}
+
+//impl<I> PurgeableIterator for Batches<I>
+//where
+    //I: PurgeableIterator<Item = Channel>,
+//{
+    //fn purge(&mut self) {
+        //self.channel_iter.purge();
+        //self.batches.clear();
+    //}
+//}
 
 impl<I> Batches<I> {
     pub fn new(channel_iter: I, state: Arc<RwLock<State>>, config: Arc<Config>) -> Self {
@@ -62,11 +90,10 @@ impl<I> Batches<I> {
 
 impl<I> Batches<I>
 where
-    I: Iterator<Item = Channel>,
+    I: AsyncIterator<Item = Channel> + Send,
 {
-    fn try_next(&mut self) -> Result<Option<Batch>> {
-        let channel = self.channel_iter.next();
-        if let Some(channel) = channel {
+    async fn try_next(&mut self) -> Result<Option<Batch>> {
+        if let Some(channel) = self.channel_iter.next().await {
             let batches = decode_batches(&channel)?;
             batches.into_iter().for_each(|batch| {
                 tracing::debug!(
