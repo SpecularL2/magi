@@ -95,31 +95,36 @@ impl Driver<EngineApi> {
             };
         }
 
-        let head = get_head_info!(BlockNumber::Finalized);
-        // TODO[maciej]
+        let finalized_head = get_head_info!(BlockNumber::Finalized);
         let safe_head = get_head_info!(BlockNumber::Safe);
         let latest_head = get_head_info!(BlockNumber::Latest);
 
-        let finalized_head = head.l2_block_info;
-        let finalized_epoch = head.l1_epoch;
-        let finalized_seq = head.sequence_number;
+        let finalized_l2_block = finalized_head.l2_block_info;
+        let finalized_epoch = finalized_head.l1_epoch;
+        let finalized_seq = finalized_head.sequence_number;
 
-        tracing::info!("starting from head: {:?}", finalized_head.hash);
+        tracing::info!(
+            "starting from head: fianlized {:?}, safe {:?}, latest {:?}",
+            finalized_l2_block.hash,
+            safe_head.l2_block_info.hash,
+            latest_head.l2_block_info.hash
+        );
 
         let l1_start_block =
             get_l1_start_block(finalized_epoch.number, config.chain.channel_timeout);
 
         let config = Arc::new(config);
         let chain_watcher =
-            ChainWatcher::new(l1_start_block, finalized_head.number, config.clone())?;
+            ChainWatcher::new(l1_start_block, finalized_l2_block.number, config.clone())?;
 
         let state = Arc::new(RwLock::new(State::new(
-            finalized_head,
-            finalized_epoch,
+            safe_head.l2_block_info,
+            safe_head.l1_epoch,
             config.clone(),
         )));
 
-        let engine_driver = EngineDriver::new(finalized_head, finalized_epoch, provider, &config)?;
+        let engine_driver =
+            EngineDriver::new(finalized_head, safe_head, latest_head, provider, &config)?;
         let pipeline = Pipeline::new(state.clone(), config.clone(), finalized_seq)?;
 
         let _addr = rpc::run_server(config.clone()).await?;
