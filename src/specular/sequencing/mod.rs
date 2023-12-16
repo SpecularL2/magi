@@ -128,7 +128,8 @@ impl<M: Middleware + 'static> SequencingPolicy for AttributesBuilder<M> {
     /// (1b) `max_safe_lag` is not configured (i.e. is 0).
     /// (2) The next timestamp isn't in the future.
     fn is_ready(&self, parent_l2_block: &BlockInfo, safe_l2_head: &BlockInfo) -> bool {
-        let within_lag = self.config.max_safe_lag == 0 || safe_l2_head.number + self.config.max_safe_lag > parent_l2_block.number;
+        let within_lag = self.config.max_safe_lag == 0
+            || safe_l2_head.number + self.config.max_safe_lag > parent_l2_block.number;
         let precedes_future = self.next_timestamp(parent_l2_block.timestamp) <= unix_now();
         within_lag && precedes_future
     }
