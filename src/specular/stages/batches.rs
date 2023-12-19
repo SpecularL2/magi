@@ -375,6 +375,7 @@ mod tests {
                 common::{
                     SetL1OracleValuesInput, SET_L1_ORACLE_VALUES_ABI, SET_L1_ORACLE_VALUES_SELECTOR,
                 },
+                config::SystemAccounts,
                 stages::{
                     batcher_transactions::SpecularBatcherTransaction, batches::decode_batches,
                 },
@@ -467,11 +468,13 @@ mod tests {
                 base_fee.into(),
                 epoch_hash,
                 state_root,
+                config.chain.system_config.l1_fee_overhead,
+                config.chain.system_config.l1_fee_scalar,
             );
             let oracle_tx_data = SET_L1_ORACLE_VALUES_ABI
                 .encode_with_selector(*SET_L1_ORACLE_VALUES_SELECTOR, oracle_tx_values)?;
             let oracle_tx: TypedTransaction = TransactionRequest::new()
-                .to(config.as_ref().chain.meta.l1_oracle)
+                .to(SystemAccounts::default().l1_oracle)
                 .data(oracle_tx_data)
                 .into();
             let encoded_oracle_tx = oracle_tx.rlp_signed(&fake_signature).to_vec();
