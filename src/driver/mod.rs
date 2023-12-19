@@ -104,7 +104,7 @@ impl Driver<EngineApi> {
         let finalized_seq = finalized_head.sequence_number;
 
         tracing::info!(
-            "starting from head: fianlized {:?}, safe {:?}, latest {:?}",
+            "starting from head: finalized {:?}, safe {:?}, latest {:?}",
             finalized_l2_block.hash,
             safe_head.l2_block_info.hash,
             latest_head.l2_block_info.hash
