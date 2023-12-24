@@ -163,6 +163,7 @@ impl<M: Middleware + 'static> SequencingPolicy for AttributesBuilder<M> {
             epoch: Some(create_epoch(next_origin)),
             l1_inclusion_block: None,
             seq_number: None,
+            expected_block_number: Some(parent_l2_block.number + 1),
         })
     }
 }

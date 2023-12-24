@@ -94,6 +94,21 @@ pub async fn execute_action<E: Engine>(
                 let safe_epoch = engine_driver.safe_epoch;
                 engine_driver.update_unsafe_head(safe_head, safe_epoch);
             }
+            // if no_tx_pool is false, it is called by the sequencer
+            // Check if normal loop reorgs.
+            if !attrs.no_tx_pool {
+                let engine_driver = engine_driver.read().await;
+                let expected_l2_block_number = attrs.expected_block_number.unwrap();
+                if engine_driver.unsafe_head.number + 1 != expected_l2_block_number {
+                    tracing::warn!(
+                        "normal loop reorg detected: sequencer expected={} actual unsafe head={}",
+                        expected_l2_block_number,
+                        engine_driver.unsafe_head.number
+                    );
+                    // Early return to avoid building a bad payload.
+                    return Ok(());
+                }
+            }
             // Build new payload.
             let (new_head, new_epoch) = build_payload(engine_driver.clone(), attrs).await?;
             // Book-keeping: prepare for next fork-choice update by updating the head.
