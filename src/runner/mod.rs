@@ -227,12 +227,13 @@ impl Runner {
                     let cfg = specular::sequencing::config::Config::new(&self.config);
                     let l2_provider = Provider::try_from(&self.config.l2_rpc_url)?;
                     let policy = specular::sequencing::AttributesBuilder::new(cfg, l2_provider);
+                    let sequencing_src = sequencing::Source::new(policy);
                     let l1_provider = Provider::try_from(&self.config.l1_rpc_url)?;
-                    let sequencing_src = sequencing::Source::new(policy, l1_provider);
                     SequencingDriver::new(
                         engine_driver,
                         state,
                         sequencing_src,
+                        l1_provider,
                         self.shutdown_recv.clone(),
                     )
                 };
