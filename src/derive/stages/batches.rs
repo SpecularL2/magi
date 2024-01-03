@@ -48,7 +48,7 @@ where
     I: PurgeableAsyncIterator<Item = Channel> + Send,
 {
     async fn purge(&mut self) {
-        self.channel_iter.purge();
+        self.channel_iter.purge().await;
         self.batches.clear();
     }
 }

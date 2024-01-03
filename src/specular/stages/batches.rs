@@ -52,7 +52,7 @@ where
     I: PurgeableAsyncIterator<Item = SpecularBatcherTransaction> + Send,
 {
     async fn purge(&mut self) {
-        self.batcher_transaction_iter.purge();
+        self.batcher_transaction_iter.purge().await;
         self.batches.clear();
     }
 }

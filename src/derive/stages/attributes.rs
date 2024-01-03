@@ -40,7 +40,7 @@ impl AsyncIterator for Attributes {
 #[async_trait]
 impl PurgeableAsyncIterator for Attributes {
     async fn purge(&mut self) {
-        self.batch_iter.purge();
+        self.batch_iter.purge().await;
         self.sequence_number = 0;
         self.epoch_hash = self.state.read().unwrap().safe_epoch.hash;
     }

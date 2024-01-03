@@ -27,7 +27,7 @@ where
     type Item = Channel;
 
     async fn next(&mut self) -> Option<Self::Item> {
-        self.process_frames()
+        self.process_frames().await
     }
 }
 
@@ -37,7 +37,7 @@ where
     I: PurgeableAsyncIterator<Item = BatcherTransaction> + Send,
 {
     async fn purge(&mut self) {
-        self.batcher_tx_iter.purge();
+        self.batcher_tx_iter.purge().await;
         self.pending_channels.clear();
         self.frame_bank.clear();
     }
@@ -102,8 +102,8 @@ where
     }
 
     /// Processes frames until there are either none left or a channel is ready
-    fn process_frames(&mut self) -> Option<Channel> {
-        self.fill_bank();
+    async fn process_frames(&mut self) -> Option<Channel> {
+        self.fill_bank().await;
 
         while !self.frame_bank.is_empty() {
             // Append the frame to the channel

@@ -322,7 +322,7 @@ impl<E: Engine> Driver<E> {
                         .map_err(|_| eyre::eyre!("lock poisoned"))?
                         .purge(engine_driver.finalized_head, engine_driver.finalized_epoch);
 
-                    self.pipeline.purge()?;
+                    self.pipeline.purge().await?;
                     engine_driver.reorg();
                 }
                 BlockUpdate::FinalityUpdate(num) => {

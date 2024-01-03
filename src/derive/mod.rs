@@ -84,8 +84,8 @@ impl Pipeline {
         self.pending_attributes.as_ref()
     }
 
-    pub fn purge(&mut self) -> Result<()> {
-        self.attributes.purge();
+    pub async fn purge(&mut self) -> Result<()> {
+        self.attributes.purge().await;
         Ok(())
     }
 }
