@@ -21,7 +21,7 @@ use tokio::{
 use crate::{
     common::{BlockInfo, Epoch},
     config::Config,
-    derive::{state::State, Pipeline, async_iterator::AsyncIterator},
+    derive::{async_iterator::AsyncIterator, state::State, Pipeline},
     engine::{Engine, EngineApi, ExecutionPayload},
     l1::{BlockUpdate, ChainWatcher},
     network::{handlers::block_handler::BlockHandler, service::Service},

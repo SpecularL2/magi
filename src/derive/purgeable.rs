@@ -1,10 +1,5 @@
-use async_trait::async_trait;
 use crate::derive::async_iterator::AsyncIterator;
-
-/// Iterator that can purge itself
-pub trait PurgeableIterator: Iterator {
-    fn purge(&mut self);
-}
+use async_trait::async_trait;
 
 /// AsyncIterator that can purge itself
 #[async_trait]

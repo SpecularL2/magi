@@ -9,6 +9,7 @@ use crate::specular::stages::{
 use crate::{config::Config, engine::PayloadAttributes};
 
 use self::{
+    async_iterator::AsyncIterator,
     stages::{
         attributes::Attributes,
         batcher_transactions::{BatcherTransactionMessage, BatcherTransactions},
@@ -16,15 +17,14 @@ use self::{
         channels::Channels,
     },
     state::State,
-    async_iterator::AsyncIterator,
 };
 
+pub mod async_iterator;
 pub mod stages;
 pub mod state;
-pub mod async_iterator;
 
 mod purgeable;
-pub use purgeable::{PurgeableIterator, PurgeableAsyncIterator};
+pub use purgeable::PurgeableAsyncIterator;
 
 pub struct Pipeline {
     batcher_transaction_sender: mpsc::Sender<BatcherTransactionMessage>,

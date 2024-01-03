@@ -5,7 +5,7 @@ use eyre::Result;
 use std::collections::VecDeque;
 
 use crate::derive::async_iterator::AsyncIterator;
-use crate::derive::{PurgeableAsyncIterator, PurgeableIterator};
+use crate::derive::PurgeableAsyncIterator;
 
 pub struct BatcherTransactionMessage {
     pub txs: Vec<Vec<u8>>,
@@ -35,23 +35,6 @@ impl PurgeableAsyncIterator for BatcherTransactions {
         self.txs.clear();
     }
 }
-
-//impl Iterator for BatcherTransactions {
-    //type Item = BatcherTransaction;
-
-    //fn next(&mut self) -> Option<Self::Item> {
-        //self.process_incoming();
-        //self.txs.pop_front()
-    //}
-//}
-
-//impl PurgeableIterator for BatcherTransactions {
-    //fn purge(&mut self) {
-        //// drain the channel first
-        //while self.transaction_rx.try_recv().is_ok() {}
-        //self.txs.clear();
-    //}
-//}
 
 impl BatcherTransactions {
     pub fn new(transaction_rx: mpsc::Receiver<BatcherTransactionMessage>) -> Self {

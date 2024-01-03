@@ -13,9 +13,9 @@ use libflate::zlib::Decoder;
 
 use crate::common::RawTransaction;
 use crate::config::Config;
-use crate::derive::state::State;
 use crate::derive::async_iterator::AsyncIterator;
-use crate::derive::{PurgeableAsyncIterator, PurgeableIterator};
+use crate::derive::state::State;
+use crate::derive::PurgeableAsyncIterator;
 
 use super::channels::Channel;
 
@@ -52,30 +52,6 @@ where
         self.batches.clear();
     }
 }
-
-//impl<I> Iterator for Batches<I>
-//where
-    //I: Iterator<Item = Channel>,
-//{
-    //type Item = Batch;
-
-    //fn next(&mut self) -> Option<Self::Item> {
-        //self.try_next().unwrap_or_else(|_| {
-            //tracing::debug!("Failed to decode batch");
-            //None
-        //})
-    //}
-//}
-
-//impl<I> PurgeableIterator for Batches<I>
-//where
-    //I: PurgeableIterator<Item = Channel>,
-//{
-    //fn purge(&mut self) {
-        //self.channel_iter.purge();
-        //self.batches.clear();
-    //}
-//}
 
 impl<I> Batches<I> {
     pub fn new(channel_iter: I, state: Arc<RwLock<State>>, config: Arc<Config>) -> Self {

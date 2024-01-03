@@ -6,4 +6,3 @@ pub trait AsyncIterator {
 
     async fn next(&mut self) -> Option<Self::Item>;
 }
-

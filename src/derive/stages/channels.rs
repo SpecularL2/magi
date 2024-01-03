@@ -45,28 +45,6 @@ where
     }
 }
 
-//impl<I> Iterator for Channels<I>
-//where
-    //I: Iterator<Item = BatcherTransaction>,
-//{
-    //type Item = Channel;
-
-    //fn next(&mut self) -> Option<Self::Item> {
-        //self.process_frames()
-    //}
-//}
-
-//impl<I> PurgeableIterator for Channels<I>
-//where
-    //I: PurgeableIterator<Item = BatcherTransaction>,
-//{
-    //fn purge(&mut self) {
-        //self.batcher_tx_iter.purge();
-        //self.pending_channels.clear();
-        //self.frame_bank.clear();
-    //}
-//}
-
 impl<I> Channels<I> {
     pub fn new(batcher_tx_iter: I, config: Arc<Config>) -> Self {
         Self {

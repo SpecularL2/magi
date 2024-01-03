@@ -11,10 +11,10 @@ use eyre::Result;
 
 use crate::common::RawTransaction;
 use crate::config::Config;
+use crate::derive::async_iterator::AsyncIterator;
 use crate::derive::stages::batches::Batch;
 use crate::derive::state::State;
-use crate::derive::{PurgeableAsyncIterator, PurgeableIterator};
-use crate::derive::async_iterator::AsyncIterator;
+use crate::derive::PurgeableAsyncIterator;
 
 use super::batcher_transactions::SpecularBatcherTransaction;
 use crate::specular::common::SetL1OracleValuesInput;

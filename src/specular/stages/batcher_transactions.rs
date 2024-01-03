@@ -5,9 +5,9 @@ use ethers::types::Bytes;
 use eyre::Result;
 use std::collections::VecDeque;
 
-use crate::derive::stages::batcher_transactions::BatcherTransactionMessage;
-use crate::derive::{PurgeableAsyncIterator, PurgeableIterator};
+use crate::derive::PurgeableAsyncIterator;
 use crate::derive::async_iterator::AsyncIterator;
+use crate::derive::stages::batcher_transactions::BatcherTransactionMessage;
 use crate::specular::common::{AppendTxBatchInput, APPEND_TX_BATCH_ABI, APPEND_TX_BATCH_SELECTOR};
 
 /// The first stage in Specular's derivation pipeline.
