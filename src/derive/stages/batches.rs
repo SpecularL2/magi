@@ -43,7 +43,7 @@ where
 }
 
 #[async_trait]
-impl<I> PurgeableAsyncIterator for Batches<I> 
+impl<I> PurgeableAsyncIterator for Batches<I>
 where
     I: PurgeableAsyncIterator<Item = Channel> + Send,
 {

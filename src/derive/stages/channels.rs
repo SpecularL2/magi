@@ -4,9 +4,7 @@ use async_trait::async_trait;
 
 use super::batcher_transactions::{BatcherTransaction, Frame};
 use crate::{
-    config::Config, 
-    derive::async_iterator::AsyncIterator,
-    derive::PurgeableAsyncIterator,
+    config::Config, derive::async_iterator::AsyncIterator, derive::PurgeableAsyncIterator,
 };
 
 pub struct Channels<I> {
