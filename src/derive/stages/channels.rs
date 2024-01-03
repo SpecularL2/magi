@@ -6,7 +6,7 @@ use super::batcher_transactions::{BatcherTransaction, Frame};
 use crate::{
     config::Config, 
     derive::async_iterator::AsyncIterator,
-    derive::{PurgeableAsyncIterator, PurgeableIterator},
+    derive::PurgeableAsyncIterator,
 };
 
 pub struct Channels<I> {
