@@ -9,9 +9,9 @@ use eyre::Result;
 
 use crate::common::{Epoch, RawTransaction};
 use crate::config::{Config, SystemAccounts};
+use crate::derive::async_iterator::AsyncIterator;
 use crate::derive::state::State;
 use crate::derive::PurgeableAsyncIterator;
-use crate::derive::async_iterator::AsyncIterator;
 use crate::engine::PayloadAttributes;
 use crate::l1::L1Info;
 
