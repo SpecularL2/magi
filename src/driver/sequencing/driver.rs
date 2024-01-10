@@ -111,7 +111,7 @@ impl<S: SequencingSource, U: JsonRpcClient> SequencingDriver<EngineApi, S, U> {
                 .await
             }
             None => {
-                tracing::info!("no payload to build");
+                tracing::trace!("no payload to build");
                 Ok(())
             }
         }
@@ -147,6 +147,7 @@ impl<S: SequencingSource, U: JsonRpcClient> SequencingDriver<EngineApi, S, U> {
             }
             sleep(Duration::from_secs(1)).await;
         }
+        tracing::info!("engine synced.");
         Ok(())
     }
 }
