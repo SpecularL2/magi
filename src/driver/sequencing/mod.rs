@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
-use ethers::providers::{JsonRpcClient, Provider};
+use ethers::providers::{Http, JsonRpcClient, Provider};
 use eyre::Result;
 use futures::future::Either;
 use futures::join;
@@ -20,32 +20,32 @@ pub mod driver;
 pub trait SequencingSource {
     /// Returns the next payload attributes to be built (if any) on top of
     /// `unsafe_head`. If no attributes are ready to be built, returns `None`.
-    async fn get_next_attributes<U: JsonRpcClient>(
+    async fn get_next_attributes(
         &self,
         state: &Arc<RwLock<State>>,
-        provider: &Provider<U>,
         parent_l2_block: &BlockInfo,
         parent_epoch: &Epoch,
     ) -> Result<Option<PayloadAttributes>>;
 }
 
-pub struct Source<T: SequencingPolicy> {
+pub struct Source<T: SequencingPolicy, U: JsonRpcClient> {
     /// The sequencing policy to use to build attributes.
     policy: T,
+    /// L1 provider for ad-hoc queries
+    provider: Provider<U>,
 }
 
-impl<T: SequencingPolicy> Source<T> {
-    pub fn new(policy: T) -> Self {
-        Self { policy }
+impl<T: SequencingPolicy, U: JsonRpcClient> Source<T, U> {
+    pub fn new(policy: T, provider: Provider<U>) -> Self {
+        Self { policy, provider }
     }
 }
 
 #[async_trait(?Send)]
-impl<T: SequencingPolicy> SequencingSource for Source<T> {
-    async fn get_next_attributes<U: JsonRpcClient>(
+impl<T: SequencingPolicy, U: JsonRpcClient> SequencingSource for Source<T, U> {
+    async fn get_next_attributes(
         &self,
         state: &Arc<RwLock<State>>,
-        provider: &Provider<U>,
         parent_l2_block: &BlockInfo,
         parent_epoch: &Epoch,
     ) -> Result<Option<PayloadAttributes>> {
@@ -75,11 +75,11 @@ impl<T: SequencingPolicy> SequencingSource for Source<T> {
         let (parent_l1_epoch, next_l1_epoch) = join!(
             match parent_l1_epoch {
                 Some(info) => Either::Left(async { Ok(info) }),
-                None => Either::Right(get_l1_block_info(parent_epoch.hash, provider)),
+                None => Either::Right(get_l1_block_info(parent_epoch.hash, &self.provider)),
             },
             match next_l1_epoch {
                 Some(info) => Either::Left(async { Ok(info) }),
-                None => Either::Right(get_l1_block_info(parent_epoch.number + 1, provider)),
+                None => Either::Right(get_l1_block_info(parent_epoch.number + 1, &self.provider)),
             },
         );
         // TODO: handle recoverable errors, if any.
@@ -129,6 +129,6 @@ impl SequencingPolicy for NoOp {
 }
 
 /// Using this just enables avoiding explicit type qualification everywhere.
-pub fn none() -> Option<Source<NoOp>> {
+pub fn none() -> Option<Source<NoOp, Http>> {
     None
 }

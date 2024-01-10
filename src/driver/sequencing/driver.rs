@@ -90,7 +90,6 @@ impl<S: SequencingSource, U: JsonRpcClient> SequencingDriver<EngineApi, S, U> {
                 .sequencing_src
                 .get_next_attributes(
                     &self.state,
-                    &self.provider,
                     &engine_driver.unsafe_head,
                     &engine_driver.unsafe_epoch,
                 )
