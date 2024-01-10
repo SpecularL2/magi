@@ -37,6 +37,8 @@ pub struct EngineDriver<E: Engine> {
     pub finalized_head: BlockInfo,
     /// Batch epoch of the finalized head
     pub finalized_epoch: Epoch,
+    /// Whether the engine has been reorged
+    pub reorged: bool,
 }
 
 #[derive(Debug)]
@@ -88,45 +90,58 @@ pub async fn execute_action<E: Engine>(
         }
         // Process the attributes (build payload + fork-choice update).
         Action::Process(reorg) => {
+            // if no_tx_pool is false, it is called by the sequencer
+            let is_sequencer = !attrs.no_tx_pool;
+
             if reorg {
                 let mut engine_driver = engine_driver.write().await;
                 let safe_head = engine_driver.safe_head;
                 let safe_epoch = engine_driver.safe_epoch;
                 engine_driver.update_unsafe_head(safe_head, safe_epoch);
-            }
-            // if no_tx_pool is false, it is called by the sequencer
-            // Check if normal loop reorgs.
-            if !attrs.no_tx_pool {
-                let engine_driver = engine_driver.read().await;
-                let expected_l2_block_number = attrs.expected_block_number.unwrap();
-                if engine_driver.unsafe_head.number + 1 != expected_l2_block_number {
-                    tracing::warn!(
-                        "normal loop reorg detected: sequencer expected={} actual unsafe head={}",
-                        expected_l2_block_number,
-                        engine_driver.unsafe_head.number
-                    );
-                    // Early return to avoid building a bad payload.
-                    return Ok(());
-                }
+                engine_driver.reorged = true;
             }
             // Build new payload.
-            let (new_head, new_epoch) = build_payload(engine_driver.clone(), attrs).await?;
-            // Book-keeping: prepare for next fork-choice update by updating the head.
-            {
-                let mut engine_driver = engine_driver.write().await;
-                match target {
-                    ChainHeadType::Safe => {
-                        engine_driver.update_safe_head(new_head, new_epoch, true)
+            let (new_head, new_epoch) = match build_payload(engine_driver.clone(), attrs).await {
+                Ok((head, epoch)) => (head, epoch),
+                Err(err) => {
+                    return match err.downcast_ref::<BuildPayloadReorgError>() {
+                        // If reorged, skip processing the attributes.
+                        Some(_) => Ok(()),
+                        None => Err(err),
                     }
-                    ChainHeadType::Unsafe => engine_driver.update_unsafe_head(new_head, new_epoch),
                 }
+            };
+            // Book-keeping: prepare for next fork-choice update by updating the head.
+            let mut engine_driver = engine_driver.write().await;
+            // Check if normal loop reorgs.
+            if is_sequencer && engine_driver.reorged {
+                engine_driver.reorged = false;
+                return Ok(());
             }
-            // Final fork-choice update. TODO: downgrade lock to read.
-            engine_driver.read().await.update_forkchoice().await?;
+            match target {
+                ChainHeadType::Safe => {
+                    engine_driver.update_safe_head(new_head, new_epoch, true)
+                }
+                ChainHeadType::Unsafe => engine_driver.update_unsafe_head(new_head, new_epoch),
+            }
+            // Final fork-choice update.
+            engine_driver.update_forkchoice().await?;
         }
     }
     Ok(())
 }
+
+/// Indicates that the engine has been reorged.
+#[derive(Debug, Clone, Copy)]
+struct BuildPayloadReorgError;
+
+impl std::fmt::Display for BuildPayloadReorgError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "engine reorged")
+    }
+}
+
+impl std::error::Error for BuildPayloadReorgError {}
 
 /// Builds a payload using the given attributes.
 /// Returns the built head and epoch.
@@ -139,7 +154,11 @@ async fn build_payload<E: Engine>(
     // Start payload building
     let new_epoch = attrs.epoch.unwrap();
     let (blocktime, id) = {
-        let engine_driver = engine_driver.read().await;
+        let mut engine_driver = engine_driver.write().await;
+        if !no_tx_pool && engine_driver.reorged {
+            engine_driver.reorged = false;
+            return Err(BuildPayloadReorgError.into());
+        }
         (
             engine_driver.blocktime,
             engine_driver.start_payload_building(attrs.clone()).await?,
@@ -425,6 +444,7 @@ impl EngineDriver<EngineApi> {
             safe_epoch: safe_head.l1_epoch,
             finalized_head: finalized_head.l2_block_info,
             finalized_epoch: finalized_head.l1_epoch,
+            reorged: false,
         })
     }
 }

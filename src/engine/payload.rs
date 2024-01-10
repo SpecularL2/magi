@@ -109,10 +109,6 @@ pub struct PayloadAttributes {
     /// skipped during serialization and deserialization.
     #[serde(skip)]
     pub seq_number: Option<u64>,
-    /// The L2 block number of the block expected by the sequencer. This value is not expected by
-    /// the engine and is skipped during serialization and deserialization.
-    #[serde(skip)]
-    pub expected_block_number: Option<u64>,
 }
 
 /// ## PayloadId

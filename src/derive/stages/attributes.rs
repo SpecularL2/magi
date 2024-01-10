@@ -95,7 +95,6 @@ impl Attributes {
             epoch,
             l1_inclusion_block,
             seq_number,
-            expected_block_number: None,
         }
     }
 
