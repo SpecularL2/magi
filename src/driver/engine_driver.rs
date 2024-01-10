@@ -108,7 +108,7 @@ pub async fn execute_action<E: Engine>(
                         // If reorged, skip processing the attributes.
                         Some(_) => Ok(()),
                         None => Err(err),
-                    }
+                    };
                 }
             };
             // Book-keeping: prepare for next fork-choice update by updating the head.
@@ -119,9 +119,7 @@ pub async fn execute_action<E: Engine>(
                 return Ok(());
             }
             match target {
-                ChainHeadType::Safe => {
-                    engine_driver.update_safe_head(new_head, new_epoch, true)
-                }
+                ChainHeadType::Safe => engine_driver.update_safe_head(new_head, new_epoch, true),
                 ChainHeadType::Unsafe => engine_driver.update_unsafe_head(new_head, new_epoch),
             }
             // Final fork-choice update.
