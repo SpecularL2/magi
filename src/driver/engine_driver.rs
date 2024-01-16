@@ -99,8 +99,8 @@ pub async fn execute_action<E: Engine>(
             }
         }
         // Process the attributes (build payload + fork-choice update).
-        Action::Process(reorg) => {
-            if reorg {
+        Action::Process(reorg_unsafe) => {
+            if reorg_unsafe {
                 let mut engine_driver = engine_driver.write().await;
                 let safe_head = engine_driver.safe_head;
                 let safe_epoch = engine_driver.safe_epoch;
@@ -126,8 +126,9 @@ pub async fn execute_action<E: Engine>(
                 }
             }
             let engine_driver = engine_driver.read().await;
+            let target = ChainHeadType::Unsafe(Some(new_head));
             // Validate chain head consistency again (probably non-essential, but avoids unnecessary work).
-            validate_head_consistency(&engine_driver, target, "update_fc".to_string())?;
+            validate_head_consistency(&engine_driver, &target, "update_fc".to_string())?;
             // Final fork-choice update.
             engine_driver.update_forkchoice().await?;
         }
@@ -167,7 +168,7 @@ async fn build_payload<E: Engine>(
     Ok((new_head, new_epoch))
 }
 
-// Validate that the unsafe head matches the expected target head (if provided).
+// Validates that the head matches the expected target head (if provided).
 fn validate_head_consistency<E: Engine>(
     engine_driver: &EngineDriver<E>,
     target: &ChainHeadType,
