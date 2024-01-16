@@ -5,7 +5,7 @@ use ethers::{
     utils::keccak256,
 };
 use eyre::Result;
-use std::{result::Result as StdResult, sync::Arc};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
@@ -53,8 +53,8 @@ pub enum Action {
 pub enum ChainHeadType {
     /// The safe head.
     Safe,
-    /// The unsafe head. If a `BlockInfo` is provided, this represents the expected head.
-    Unsafe(Option<BlockInfo>),
+    /// The unsafe head. Contains the expected head.
+    Unsafe(BlockInfo),
 }
 
 #[derive(Debug, Error)]
@@ -72,7 +72,7 @@ pub async fn handle_attributes<E: Engine>(
     attrs: PayloadAttributes,
     target: &ChainHeadType,
     engine_driver: Arc<RwLock<EngineDriver<E>>>,
-) -> StdResult<(), EngineDriverError> {
+) -> Result<(), EngineDriverError> {
     let action = {
         let engine_driver = engine_driver.read().await;
         engine_driver.determine_action(&attrs).await?
@@ -87,7 +87,7 @@ pub async fn execute_action<E: Engine>(
     action: Action,
     target: &ChainHeadType,
     engine_driver: Arc<RwLock<EngineDriver<E>>>,
-) -> StdResult<(), EngineDriverError> {
+) -> Result<(), EngineDriverError> {
     match action {
         // Skip processing the attributes (fork-choice update-only).
         Action::Skip(info) => {
@@ -102,9 +102,18 @@ pub async fn execute_action<E: Engine>(
         Action::Process(reorg_unsafe) => {
             if reorg_unsafe {
                 let mut engine_driver = engine_driver.write().await;
-                let safe_head = engine_driver.safe_head;
-                let safe_epoch = engine_driver.safe_epoch;
-                engine_driver.update_unsafe_head(safe_head, safe_epoch);
+                match target {
+                    ChainHeadType::Safe => {
+                        let safe_head = engine_driver.safe_head;
+                        let safe_epoch = engine_driver.safe_epoch;
+                        engine_driver.update_unsafe_head(safe_head, safe_epoch);
+                    }
+                    // TODO: support this (potentially required for restart-related edge-cases).
+                    ChainHeadType::Unsafe(_) => {
+                        let err = eyre::eyre!("not supported");
+                        return Err(EngineDriverError::Other(err));
+                    }
+                }
             }
             // Build new payload.
             let (new_head, new_epoch) = build_payload(attrs, target, engine_driver.clone()).await?;
@@ -126,8 +135,8 @@ pub async fn execute_action<E: Engine>(
                 }
             }
             let engine_driver = engine_driver.read().await;
-            let target = ChainHeadType::Unsafe(Some(new_head));
-            // Validate chain head consistency again (probably non-essential, but avoids unnecessary work).
+            let target = ChainHeadType::Unsafe(new_head);
+            // Validate chain head consistency (probably non-essential, but avoids unnecessary work).
             validate_head_consistency(&engine_driver, &target, "update_fc".to_string())?;
             // Final fork-choice update.
             engine_driver.update_forkchoice().await?;
@@ -142,7 +151,7 @@ async fn build_payload<E: Engine>(
     attrs: PayloadAttributes,
     target: &ChainHeadType,
     engine_driver: Arc<RwLock<EngineDriver<E>>>,
-) -> StdResult<(BlockInfo, Epoch), EngineDriverError> {
+) -> Result<(BlockInfo, Epoch), EngineDriverError> {
     let no_tx_pool = attrs.no_tx_pool;
     // Start payload building
     let new_epoch = attrs.epoch.unwrap();
@@ -173,9 +182,9 @@ fn validate_head_consistency<E: Engine>(
     engine_driver: &EngineDriver<E>,
     target: &ChainHeadType,
     context: String,
-) -> StdResult<(), EngineDriverError> {
+) -> Result<(), EngineDriverError> {
     match target {
-        ChainHeadType::Unsafe(Some(info)) if &engine_driver.unsafe_head != info => {
+        ChainHeadType::Unsafe(info) if &engine_driver.unsafe_head != info => {
             Err(EngineDriverError::UnsafeHeadMismatch(
                 context,
                 info.hash,
@@ -260,6 +269,7 @@ impl<E: Engine> EngineDriver<E> {
     }
 
     pub fn update_unsafe_head(&mut self, head: BlockInfo, epoch: Epoch) {
+        tracing::trace!("updated unsafe: {}", self.unsafe_head.number);
         self.unsafe_head = head;
         self.unsafe_epoch = epoch;
     }
@@ -270,11 +280,7 @@ impl<E: Engine> EngineDriver<E> {
             self.safe_epoch = epoch;
         }
         if reorg_unsafe || self.safe_head.number > self.unsafe_head.number {
-            tracing::info!(
-                "updating unsafe {} to safe {}",
-                self.unsafe_head.number,
-                self.safe_head.number
-            );
+            tracing::trace!("updating unsafe to safe");
             self.update_unsafe_head(self.safe_head, self.safe_epoch);
         }
     }
@@ -371,6 +377,12 @@ impl<E: Engine> EngineDriver<E> {
 
     pub async fn update_forkchoice(&self) -> Result<()> {
         let forkchoice = self.create_forkchoice_state();
+        tracing::info!(
+            "updating fc: head={} safe={} finalized={}",
+            self.unsafe_head.number,
+            self.safe_head.number,
+            self.finalized_head.number,
+        );
 
         let update = self.engine.forkchoice_updated(forkchoice, None).await?;
         if update.payload_status.status != Status::Valid {

@@ -116,7 +116,7 @@ impl<S: SequencingSource, U: JsonRpcClient> SequencingDriver<EngineApi, S, U> {
                 execute_action(
                     attrs,
                     action,
-                    &ChainHeadType::Unsafe(Some(target)),
+                    &ChainHeadType::Unsafe(target),
                     self.engine_driver.clone(),
                 )
                 .await
