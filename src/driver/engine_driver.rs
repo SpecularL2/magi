@@ -59,7 +59,7 @@ pub enum ChainHeadType {
 
 #[derive(Debug, Error)]
 pub enum EngineDriverError {
-    #[error("mismatching unsafe head (expected: {1}, actual: {2}): {0}")]
+    #[error("mismatching unsafe head (expected: {1}, actual: {2}) -- context: {0}")]
     UnsafeHeadMismatch(String, H256, H256),
     #[error(transparent)]
     Other(#[from] eyre::Error),
@@ -116,17 +116,20 @@ pub async fn execute_action<E: Engine>(
                         engine_driver.update_safe_head(new_head, new_epoch, true)
                     }
                     ChainHeadType::Unsafe(_) => {
-                        validate_chain_head_consistency(
+                        validate_head_consistency(
                             &engine_driver,
                             target,
-                            "pre-update unsafe".to_string(),
+                            "update_unsafe".to_string(),
                         )?;
                         engine_driver.update_unsafe_head(new_head, new_epoch)
                     }
                 }
             }
+            let engine_driver = engine_driver.read().await;
+            // Validate chain head consistency again (probably non-essential, but avoids unnecessary work).
+            validate_head_consistency(&engine_driver, target, "update_fc".to_string())?;
             // Final fork-choice update.
-            engine_driver.read().await.update_forkchoice().await?;
+            engine_driver.update_forkchoice().await?;
         }
     }
     Ok(())
@@ -144,9 +147,9 @@ async fn build_payload<E: Engine>(
     let new_epoch = attrs.epoch.unwrap();
     let (blocktime, id) = {
         let engine_driver = engine_driver.read().await;
-        // Validate that the unsafe head matches the expected target head (if provided).
+        // Validate chain head consistency, if concrete target provided.
         // This ensures that the attributes build on the head expected by the sequencer.
-        validate_chain_head_consistency(&engine_driver, target, "pre-init".to_string())?;
+        validate_head_consistency(&engine_driver, target, "start_payload".to_string())?;
         (
             engine_driver.blocktime,
             engine_driver.start_payload_building(attrs.clone()).await?,
@@ -156,15 +159,16 @@ async fn build_payload<E: Engine>(
     if !no_tx_pool {
         sleep(Duration::from_secs(blocktime)).await;
     }
-    // Finalize payload building.
     let engine_driver = engine_driver.read().await;
-    validate_chain_head_consistency(&engine_driver, target, "pre-finalization".to_string())?;
+    // Validate chain head consistency again (probably non-essential, but avoids unnecessary work).
+    validate_head_consistency(&engine_driver, target, "finalize_payload".to_string())?;
+    // Finalize payload building.
     let new_head = engine_driver.finalize_payload_building(id).await?;
     Ok((new_head, new_epoch))
 }
 
 // Validate that the unsafe head matches the expected target head (if provided).
-fn validate_chain_head_consistency<E: Engine>(
+fn validate_head_consistency<E: Engine>(
     engine_driver: &EngineDriver<E>,
     target: &ChainHeadType,
     context: String,
