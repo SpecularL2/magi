@@ -168,7 +168,7 @@ async fn build_payload<E: Engine>(
     tracing::info!(
         "building payload: ts={} #txs={} epoch={}",
         attrs.timestamp,
-        attrs.transactions.unwrap_or(vec![]).len(),
+        attrs.transactions.unwrap_or_default().len(),
         new_epoch.number
     );
     // If we're including transaction from txpool, wait for the blocktime to pass.
