@@ -58,6 +58,8 @@ pub struct Config {
     pub devnet: bool,
     /// The local sequencer config. Disabled by default.
     pub local_sequencer: LocalSequencerConfig,
+    /// Watcher query delay
+    pub watcher_delay: u64,
 }
 
 /// A local sequencer configuration.
@@ -120,6 +122,8 @@ pub struct CliConfig {
     pub devnet: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_sequencer: Option<LocalSequencerConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub watcher_delay: Option<u64>,
 }
 
 /// A Chain Configuration
