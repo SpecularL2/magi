@@ -18,6 +18,9 @@ use crate::{
 
 use super::HeadInfo;
 
+// SEALING_DURATION defines the expected time it takes to seal the block
+const SEALING_DURATION: Duration = Duration::from_millis(10);
+
 pub struct EngineDriver<E: Engine> {
     /// The L2 execution engine
     engine: Arc<E>,
@@ -173,7 +176,8 @@ async fn build_payload<E: Engine>(
     );
     // If we're including transaction from txpool, wait for the blocktime to pass.
     if !no_tx_pool {
-        sleep(Duration::from_secs(blocktime)).await;
+        let duration = Duration::from_secs(blocktime).saturating_sub(SEALING_DURATION);
+        sleep(duration).await;
     }
     let engine_driver = engine_driver.read().await;
     // Validate chain head consistency again (probably non-essential, but avoids unnecessary work).
