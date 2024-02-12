@@ -19,7 +19,7 @@ use crate::{
 use super::HeadInfo;
 
 // SEALING_DURATION defines the expected time it takes to seal the block
-const SEALING_DURATION: Duration = Duration::from_millis(10);
+const SEALING_DURATION: Duration = Duration::from_millis(100);
 
 pub struct EngineDriver<E: Engine> {
     /// The L2 execution engine
