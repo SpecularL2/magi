@@ -55,7 +55,7 @@ impl<S: SequencingSource, U: JsonRpcClient> SequencingDriver<EngineApi, S, U> {
 
     /// Shuts down the driver
     pub async fn shutdown(&self) {
-        process::exit(0);
+        process::exit(1);
     }
 
     /// Checks for shutdown signal and shuts down if received
