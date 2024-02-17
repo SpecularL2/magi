@@ -32,11 +32,11 @@ pub struct Source<T: SequencingPolicy, U: JsonRpcClient> {
     /// The sequencing policy to use to build attributes.
     policy: T,
     /// L1 provider for ad-hoc queries
-    provider: Provider<U>,
+    provider: Arc<Provider<U>>,
 }
 
 impl<T: SequencingPolicy, U: JsonRpcClient> Source<T, U> {
-    pub fn new(policy: T, provider: Provider<U>) -> Self {
+    pub fn new(policy: T, provider: Arc<Provider<U>>) -> Self {
         Self { policy, provider }
     }
 }

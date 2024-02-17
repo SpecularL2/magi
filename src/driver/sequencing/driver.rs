@@ -31,7 +31,7 @@ pub struct SequencingDriver<E: Engine, S: SequencingSource, U: JsonRpcClient> {
     /// Local sequencing source
     sequencing_src: S,
     /// L1 provider for ad-hoc queries
-    provider: Provider<U>,
+    provider: Arc<Provider<U>>,
     /// Channel to receive the shutdown signal from
     shutdown_recv: watch::Receiver<bool>,
 }
@@ -41,7 +41,7 @@ impl<S: SequencingSource, U: JsonRpcClient> SequencingDriver<EngineApi, S, U> {
         engine_driver: Arc<TokioRwLock<EngineDriver<EngineApi>>>,
         state: Arc<RwLock<State>>,
         sequencing_src: S,
-        provider: Provider<U>,
+        provider: Arc<Provider<U>>,
         shutdown_recv: watch::Receiver<bool>,
     ) -> SequencingDriver<EngineApi, S, U> {
         SequencingDriver {
