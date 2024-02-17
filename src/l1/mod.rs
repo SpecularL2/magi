@@ -619,7 +619,7 @@ impl TryFrom<Log> for SystemConfigUpdate {
     }
 }
 
-fn generate_http_provider(url: &str) -> Arc<Provider<RetryClient<Http>>> {
+pub(crate) fn generate_http_provider(url: &str) -> Arc<Provider<RetryClient<Http>>> {
     let client = reqwest::ClientBuilder::new()
         .timeout(Duration::from_secs(5))
         .build()
