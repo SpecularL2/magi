@@ -226,7 +226,6 @@ impl Runner {
                 // Use specular sequencing.
                 let mut driver = {
                     let cfg = specular::sequencing::config::Config::new(&self.config);
-                    // let l2_provider = Provider::try_from(&self.config.l2_rpc_url)?;
                     let l2_provider = generate_http_provider(&self.config.l2_rpc_url);
                     let policy = specular::sequencing::AttributesBuilder::new(cfg, l2_provider);
                     let l1_provider = generate_http_provider(&self.config.l1_rpc_url);
