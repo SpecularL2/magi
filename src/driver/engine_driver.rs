@@ -111,10 +111,14 @@ pub async fn execute_action<E: Engine>(
                         let safe_epoch = engine_driver.safe_epoch;
                         engine_driver.update_unsafe_head(safe_head, safe_epoch);
                     }
-                    // TODO: support this (potentially required for restart-related edge-cases).
                     ChainHeadType::Unsafe(_) => {
-                        let err = eyre::eyre!("not supported");
-                        return Err(EngineDriverError::Other(err));
+                        // `determin_action` will mark `reorg_unsafe` as true only if target will reorg the chain.
+                        //  When the target is unsafe, we should simply drop the attributes.
+                        return Err(EngineDriverError::UnsafeHeadMismatch(
+                            "determin_action".into(),
+                            H256::zero(), // Attributes are not processed, so no hash.
+                            engine_driver.unsafe_head.hash,
+                        ));
                     }
                 }
             }
