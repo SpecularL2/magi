@@ -112,10 +112,10 @@ pub async fn execute_action<E: Engine>(
                         engine_driver.update_unsafe_head(safe_head, safe_epoch);
                     }
                     ChainHeadType::Unsafe(_) => {
-                        // `determin_action` will mark `reorg_unsafe` as true only if target will reorg the chain.
+                        // `determine_action` will mark `reorg_unsafe` as true only if target will reorg the chain.
                         //  When the target is unsafe, we should simply drop the attributes.
                         return Err(EngineDriverError::UnsafeHeadMismatch(
-                            "determin_action".into(),
+                            "determine_action".into(),
                             H256::zero(), // Attributes are not processed, so no hash.
                             engine_driver.unsafe_head.hash,
                         ));
