@@ -111,10 +111,21 @@ pub async fn execute_action<E: Engine>(
                         let safe_epoch = engine_driver.safe_epoch;
                         engine_driver.update_unsafe_head(safe_head, safe_epoch);
                     }
-                    // TODO: support this (potentially required for restart-related edge-cases).
                     ChainHeadType::Unsafe(_) => {
-                        let err = eyre::eyre!("not supported");
-                        return Err(EngineDriverError::Other(err));
+                        // `determine_action` will mark `reorg_unsafe` as true only if target will reorg the chain.
+                        // When the target is unsafe, we should check if the head inconsistency is causing the problem,
+                        // which is recoverable.
+                        validate_head_consistency(
+                            &engine_driver,
+                            target,
+                            "determine_action".into(),
+                        )?;
+                        // Otherwise currently not handled
+                        // TODO: support this
+                        return Err(eyre::eyre!(
+                            "not supported: reorg_unsafe is true for unsafe head target"
+                        )
+                        .into());
                     }
                 }
             }
