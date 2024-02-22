@@ -113,12 +113,19 @@ pub async fn execute_action<E: Engine>(
                     }
                     ChainHeadType::Unsafe(_) => {
                         // `determine_action` will mark `reorg_unsafe` as true only if target will reorg the chain.
-                        //  When the target is unsafe, we should simply drop the attributes.
-                        return Err(EngineDriverError::UnsafeHeadMismatch(
+                        // When the target is unsafe, we should check if the head inconsistency is causing the problem,
+                        // which is recoverable.
+                        validate_head_consistency(
+                            &engine_driver,
+                            target,
                             "determine_action".into(),
-                            H256::zero(), // Attributes are not processed, so no hash.
-                            engine_driver.unsafe_head.hash,
-                        ));
+                        )?;
+                        // Otherwise currently not handled
+                        // TODO: support this
+                        return Err(eyre::eyre!(
+                            "not supported: reorg_unsafe is true for unsafe head target"
+                        )
+                        .into());
                     }
                 }
             }
