@@ -233,17 +233,37 @@ fn decode_batches_v0(
     for batch_list in batch_lists.iter() {
         // Decode the first l2 block number at offset 0.
         let batch_first_l2_num: u64 = batch_list.val_at(0)?;
+        let last_in_batch: u64;
+        let mut to_skip: u64 = 0;
         // Check for duplicates.
+        tracing::info!(
+            "batch_first_l2_num = {} local_l2_num = {}",
+            batch_first_l2_num,
+            local_l2_num,
+        );
         if batch_first_l2_num < local_l2_num {
             tracing::warn!(
                 "BatcherTx batches already seen | safe_head={} first_l2_block_num={}",
                 local_l2_num,
                 batch_first_l2_num
             );
-            eyre::bail!("BatcherTx batches already seen");
+
+            // Assuming all items included are consequtive, last block l2 block number in batch would be:
+            last_in_batch = batch_first_l2_num + batch_list.size() as u64 - 1;
+            tracing::info!("last_in_batch={}", last_in_batch);
+
+            if last_in_batch > local_l2_num {
+                // L2 blocks sequence range missed to redo: (start_from, local_l2_num)
+                to_skip = last_in_batch - local_l2_num;
+                tracing::info!("recovering part of batches after to_skip={}", to_skip);
+            } else {
+                eyre::bail!("BatcherTx all batches already seen");
+            }
         }
+
         // Insert empty batches for missing blocks.
-        for i in local_l2_num + 1..batch_first_l2_num {
+        // We start from adjusted range down if some batches were missed due to unexpected iterruption.
+        for i in batch_first_l2_num + to_skip + 1..batch_first_l2_num {
             let batch = SpecularBatchV0 {
                 epoch_num,
                 epoch_hash,
@@ -267,6 +287,11 @@ fn decode_batches_v0(
             (batch_first_l2_num - safe_l2_num) * config.chain.blocktime + safe_l2_ts;
         // Decode the transaction batches at offset 1.
         for (batch, idx) in batch_list.at(1)?.iter().zip(0u64..) {
+            // In case of partial batch sequencing, we should skip sequencing batches which were already covered
+            if idx < to_skip {
+                continue;
+            }
+
             let transactions: Vec<RawTransaction> = batch.as_list()?;
             // Try decode the `setL1OacleValues` call if it is the first batch in the list.
             let l1_oracle_values = if idx == 0 {
