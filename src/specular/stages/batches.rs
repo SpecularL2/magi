@@ -233,10 +233,9 @@ fn decode_batches_v0(
     for batch_list in batch_lists.iter() {
         // Decode the first l2 block number at offset 0.
         let batch_first_l2_num: u64 = batch_list.val_at(0)?;
-        let last_in_batch: u64;
-
         // Assuming all items included are consequtive, last block l2 block number in batch would be:
-        last_in_batch = batch_first_l2_num + batch_list.size() as u64;
+        let last_in_batch: u64 = batch_first_l2_num + batch_list.size() as u64;
+
         // Check for duplicates.
         tracing::info!(
             "batch_first_l2_num = {} local_l2_num = {} last_in_batch = {}",
