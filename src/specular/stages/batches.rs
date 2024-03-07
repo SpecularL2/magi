@@ -237,7 +237,6 @@ fn decode_batches_v0(
 
         // Assuming all items included are consequtive, last block l2 block number in batch would be:
         last_in_batch = batch_first_l2_num + batch_list.size() as u64;
-        
         // Check for duplicates.
         tracing::info!(
             "batch_first_l2_num = {} local_l2_num = {} last_in_batch = {}",
@@ -251,7 +250,11 @@ fn decode_batches_v0(
             let to_skip: u64 = last_in_batch - local_l2_num - 1;
             // We start from adjusted range down if some batches were missed due to unexpected iterruption.
             local_l2_num += to_skip;
-            tracing::info!("recovering part of batches to_skip = {} local_l2_num = {}", to_skip, local_l2_num);
+            tracing::info!(
+                "recovering part of batches to_skip = {} local_l2_num = {}",
+                to_skip,
+                local_l2_num,
+            );
         } else {
             // No gap, nothing to do
             eyre::bail!("BatcherTx all batches already seen");
