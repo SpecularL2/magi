@@ -236,7 +236,7 @@ fn decode_batches_v0(
         let last_in_batch: u64;
 
         // Assuming all items included are consequtive, last block l2 block number in batch would be:
-        last_in_batch = batch_first_l2_num + batch_list.size() as u64 - 1;
+        last_in_batch = batch_first_l2_num + batch_list.size() as u64;
         
         // Check for duplicates.
         tracing::info!(
@@ -248,7 +248,7 @@ fn decode_batches_v0(
 
         if last_in_batch > local_l2_num {
             // L2 blocks sequence range missed to redo: (local_l2_num + to_skip, local_l2_num)
-            let to_skip: u64 = last_in_batch - local_l2_num;
+            let to_skip: u64 = last_in_batch - local_l2_num - 1;
             // We start from adjusted range down if some batches were missed due to unexpected iterruption.
             local_l2_num += to_skip;
             tracing::info!("recovering part of batches to_skip = {} local_l2_num = {}", to_skip, local_l2_num);
@@ -400,6 +400,8 @@ mod tests {
             },
         };
 
+        use tracing_test::traced_test;
+
         struct SubBatch {
             first_l2_block_num: u64,
             tx_blocks: Vec<Vec<RawTransaction>>,
@@ -449,6 +451,7 @@ mod tests {
         }
 
         #[test]
+        #[traced_test]
         fn decode() -> eyre::Result<()> {
             let config = Arc::new(Config {
                 l1_rpc_url: Default::default(),

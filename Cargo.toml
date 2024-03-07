@@ -31,6 +31,7 @@ thiserror = "1.0.56"
 # Logging and Metrics
 chrono = "0.4.22"
 tracing = "0.1.36"
+tracing-test = { version = "0.2.4", features = ["no-env-filter"] }
 ansi_term = "0.12.1"
 tracing-appender = "0.2.2"
 tracing-subscriber = { version = "0.3.16", features = [
