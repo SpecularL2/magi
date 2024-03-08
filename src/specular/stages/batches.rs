@@ -233,40 +233,49 @@ fn decode_batches_v0(
     for batch_list in batch_lists.iter() {
         // Decode the first l2 block number at offset 0.
         let batch_first_l2_num: u64 = batch_list.val_at(0)?;
-        // Check for duplicates.
-        if batch_first_l2_num < local_l2_num {
+        if batch_first_l2_num <= local_l2_num {
+            // We've already (partially) seen this batch.
             tracing::warn!(
                 "BatcherTx batches already seen | safe_head={} first_l2_block_num={}",
                 local_l2_num,
                 batch_first_l2_num
             );
-            eyre::bail!("BatcherTx batches already seen");
+        } else {
+            // Insert empty batches for potential missing blocks.
+            for i in local_l2_num + 1..batch_first_l2_num {
+                let batch = SpecularBatchV0 {
+                    epoch_num,
+                    epoch_hash,
+                    timestamp: (i - safe_l2_num) * config.chain.blocktime + safe_l2_ts,
+                    transactions: Vec::new(),
+                    l2_block_number: i,
+                    l1_inclusion_block: state.current_epoch_num,
+                    l1_oracle_values: None,
+                };
+                tracing::info!(
+                    "inserting empty batch | num={} ts={}",
+                    batch.l2_block_number,
+                    batch.timestamp,
+                );
+                batches.push(batch);
+            }
+            // Update the local l2 block number.
+            // We're supposed to have inserted empty batches until right before the first batch in the list.
+            local_l2_num = batch_first_l2_num - 1;
         }
-        // Insert empty batches for missing blocks.
-        for i in local_l2_num + 1..batch_first_l2_num {
-            let batch = SpecularBatchV0 {
-                epoch_num,
-                epoch_hash,
-                timestamp: (i - safe_l2_num) * config.chain.blocktime + safe_l2_ts,
-                transactions: Vec::new(),
-                l2_block_number: i,
-                l1_inclusion_block: state.current_epoch_num,
-                l1_oracle_values: None,
-            };
-            tracing::trace!(
-                "inserting empty batch | num={} ts={}",
-                batch.l2_block_number,
-                batch.timestamp,
-            );
-            batches.push(batch);
-        }
-        // Update the local l2 block number.
-        // We're supposed to have inserted empty batches until right before the first batch in the list.
-        local_l2_num = batch_first_l2_num - 1;
         let batch_first_l2_ts =
             (batch_first_l2_num - safe_l2_num) * config.chain.blocktime + safe_l2_ts;
         // Decode the transaction batches at offset 1.
         for (batch, idx) in batch_list.at(1)?.iter().zip(0u64..) {
+            if batch_first_l2_num + idx <= local_l2_num {
+                // We've already seen this batch.
+                tracing::warn!(
+                    "BatcherTx batch already seen | safe_head={} skipping batch={}",
+                    local_l2_num,
+                    batch_first_l2_num + idx
+                );
+                continue;
+            }
             let transactions: Vec<RawTransaction> = batch.as_list()?;
             // Try decode the `setL1OacleValues` call if it is the first batch in the list.
             let l1_oracle_values = if idx == 0 {
@@ -543,6 +552,33 @@ mod tests {
             assert_eq!(batches[2].transactions[0].0, encoded_non_oracle_tx);
             assert_eq!(batches[2].l1_inclusion_block, l1_inclusion_block);
             assert_eq!(batches[2].l1_oracle_values, None);
+            
+            {
+                // Manually update the state to simulate the derivation of the first sub-batch.
+                let mut state = state.write().unwrap();
+                state.safe_epoch.number = epoch_num;
+                state.safe_epoch.hash = epoch_hash;
+                state.safe_head.number = first_l2_block_num;
+                state.safe_head.timestamp = timestamp;
+            }
+
+            // Test the case where the first sub-batch is already seen.
+
+            let batches = decode_batches(&batcher_tx, &state, &config)?;
+
+            assert_eq!(batches.len(), 2);
+
+            assert_eq!(batches[0].epoch_num, epoch_num);
+            assert_eq!(batches[0].epoch_hash, epoch_hash);
+            assert_eq!(
+                batches[0].timestamp,
+                timestamp + config.as_ref().chain.blocktime
+            );
+            assert_eq!(batches[0].l2_block_number, first_l2_block_num + 1);
+            assert_eq!(batches[0].transactions.len(), 1);
+            assert_eq!(batches[0].transactions[0].0, encoded_non_oracle_tx);
+            assert_eq!(batches[0].l1_inclusion_block, l1_inclusion_block);
+            assert_eq!(batches[0].l1_oracle_values, None);
 
             Ok(())
         }
