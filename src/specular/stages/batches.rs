@@ -552,7 +552,7 @@ mod tests {
             assert_eq!(batches[2].transactions[0].0, encoded_non_oracle_tx);
             assert_eq!(batches[2].l1_inclusion_block, l1_inclusion_block);
             assert_eq!(batches[2].l1_oracle_values, None);
-            
+
             {
                 // Manually update the state to simulate the derivation of the first sub-batch.
                 let mut state = state.write().unwrap();
