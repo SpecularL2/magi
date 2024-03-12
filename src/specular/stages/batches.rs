@@ -121,23 +121,33 @@ where
                 if current_l1_block > epoch.number + seq_window_size {
                     let next_timestamp = safe_head.timestamp + self.config.chain.blocktime;
                     let epoch = if next_timestamp < next_epoch.timestamp {
-                        epoch
+                        // Current epoch passed seq window, so we need to insert an empty batch
+                        Some(epoch)
+                    } else if current_l1_block > next_epoch.number + seq_window_size {
+                        // Next epoch passed seq window, we can increment the epoch
+                        Some(next_epoch)
                     } else {
-                        next_epoch
+                        // Next epoch haven't passed seq window
+                        // We need to wait until the next epoch passes seq window to increment the epoch
+                        None
                     };
-                    tracing::trace!(
-                        "inserting empty batch | ts={} epoch_num={}",
-                        epoch.number,
-                        next_timestamp
-                    );
-                    Some(Batch {
-                        epoch_num: epoch.number,
-                        epoch_hash: epoch.hash,
-                        parent_hash: Default::default(), // We don't care about parent_hash
-                        timestamp: next_timestamp,
-                        transactions: Vec::new(),
-                        l1_inclusion_block: current_l1_block,
-                    })
+                    if let Some(epoch) = epoch {
+                        tracing::trace!(
+                            "inserting empty batch | ts={} epoch_num={}",
+                            epoch.number,
+                            next_timestamp
+                        );
+                        Some(Batch {
+                            epoch_num: epoch.number,
+                            epoch_hash: epoch.hash,
+                            parent_hash: Default::default(), // We don't care about parent_hash
+                            timestamp: next_timestamp,
+                            transactions: Vec::new(),
+                            l1_inclusion_block: current_l1_block,
+                        })
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
