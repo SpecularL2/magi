@@ -267,12 +267,13 @@ fn decode_batches_v0(
             (batch_first_l2_num - safe_l2_num) * config.chain.blocktime + safe_l2_ts;
         // Decode the transaction batches at offset 1.
         for (batch, idx) in batch_list.at(1)?.iter().zip(0u64..) {
-            if batch_first_l2_num + idx <= local_l2_num {
+            let current_l2_num = batch_first_l2_num + idx;
+            if current_l2_num <= local_l2_num {
                 // We've already seen this batch.
                 tracing::warn!(
                     "BatcherTx batch already seen | safe_head={} skipping batch={}",
                     local_l2_num,
-                    batch_first_l2_num + idx
+                    current_l2_num
                 );
                 continue;
             }
@@ -296,7 +297,7 @@ fn decode_batches_v0(
                 epoch_hash,
                 timestamp: batch_first_l2_ts + idx * config.chain.blocktime,
                 transactions,
-                l2_block_number: batch_first_l2_num + idx,
+                l2_block_number: current_l2_num,
                 l1_inclusion_block: batcher_tx.l1_inclusion_block,
                 l1_oracle_values,
             };
