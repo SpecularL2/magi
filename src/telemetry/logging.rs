@@ -92,14 +92,12 @@ pub fn build_subscriber(
                 )
                 .init();
         }
+    } else if json_logs {
+        tracing_subscriber::fmt().json().init();
     } else {
-        if json_logs {
-            tracing_subscriber::fmt().json().init();
-        } else {
-            tracing_subscriber::registry()
-                .with(stdout_formatting_layer)
-                .init();
-        }
+        tracing_subscriber::registry()
+            .with(stdout_formatting_layer)
+            .init();
     }
 
     guards
