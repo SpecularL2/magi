@@ -54,6 +54,8 @@ pub fn build_subscriber(
 ) -> Vec<WorkerGuard> {
     let mut guards = Vec::new();
 
+    // Force the file logger to log at `debug` level
+    let file_env_filter = EnvFilter::from("magi=debug,network=debug");
     let stdout_env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new(match verbose {
             true => "magi=debug,network=debug".to_owned(),
@@ -62,17 +64,13 @@ pub fn build_subscriber(
     });
 
     let stdout_formatting_layer = AnsiTermLayer { verbose }.with_filter(stdout_env_filter);
+    let subscriber = tracing_subscriber::registry();
 
-    // If a file appender is provided, log to it and stdout, otherwise just log to stdout
-    if let Some(appender) = appender {
-        let (non_blocking, guard) = tracing_appender::non_blocking(appender);
-        guards.push(guard);
-
-        // Force the file logger to log at `debug` level
-        let file_env_filter = EnvFilter::from("magi=debug,network=debug");
-
-        if json_logs {
-            tracing_subscriber::registry()
+    match (appender, json_logs) {
+        (Some(appender), true) => {
+            let (non_blocking, guard) = tracing_appender::non_blocking(appender);
+            guards.push(guard);
+            subscriber
                 .with(tracing_subscriber::fmt::layer().json())
                 .with(
                     tracing_subscriber::fmt::layer()
@@ -81,8 +79,11 @@ pub fn build_subscriber(
                         .with_filter(file_env_filter),
                 )
                 .init();
-        } else {
-            tracing_subscriber::registry()
+        }
+        (Some(appender), false) => {
+            let (non_blocking, guard) = tracing_appender::non_blocking(appender);
+            guards.push(guard);
+            subscriber
                 .with(stdout_formatting_layer)
                 .with(
                     tracing_subscriber::fmt::layer()
@@ -92,13 +93,13 @@ pub fn build_subscriber(
                 )
                 .init();
         }
-    } else if json_logs {
-        tracing_subscriber::fmt().json().init();
-    } else {
-        tracing_subscriber::registry()
-            .with(stdout_formatting_layer)
-            .init();
-    }
+        (None, true) => {
+            tracing_subscriber::fmt().json().init();
+        }
+        (None, false) => {
+            subscriber.with(stdout_formatting_layer).init();
+        }
+    };
 
     guards
 }
