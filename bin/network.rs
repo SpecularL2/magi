@@ -11,7 +11,7 @@ use tokio::sync::watch;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let _guards = telemetry::init(false, None, None);
+    let _guards = telemetry::init(false, false, None, None);
 
     let addr = "0.0.0.0:9876".parse()?;
     let chain_id = 420;

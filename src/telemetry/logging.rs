@@ -22,6 +22,7 @@ const DEFAULT_ROTATION: &str = "daily";
 /// Configure logging telemetry with a global handler.
 pub fn init(
     verbose: bool,
+    json_logs: bool,
     logs_dir: Option<String>,
     logs_rotation: Option<String>,
 ) -> Vec<WorkerGuard> {
@@ -35,20 +36,26 @@ pub fn init(
             rotation,
             LOG_FILE_NAME_PREFIX,
         ));
-        return build_subscriber(verbose, appender);
+        return build_subscriber(verbose, json_logs, appender);
     }
 
     // If no directory is provided, log to stdout only
-    build_subscriber(verbose, None)
+    build_subscriber(verbose, json_logs, None)
 }
 
 /// Subscriber Composer
 ///
 /// Builds a subscriber with multiple layers into a [tracing](https://crates.io/crates/tracing) subscriber
 /// and initializes it as the global default. This subscriber will log to stdout and optionally to a file.
-pub fn build_subscriber(verbose: bool, appender: Option<RollingFileAppender>) -> Vec<WorkerGuard> {
+pub fn build_subscriber(
+    verbose: bool,
+    json_logs: bool,
+    appender: Option<RollingFileAppender>,
+) -> Vec<WorkerGuard> {
     let mut guards = Vec::new();
 
+    // Force the file logger to log at `debug` level
+    let file_env_filter = EnvFilter::from("magi=debug,network=debug");
     let stdout_env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new(match verbose {
             true => "magi=debug,network=debug".to_owned(),
@@ -57,29 +64,42 @@ pub fn build_subscriber(verbose: bool, appender: Option<RollingFileAppender>) ->
     });
 
     let stdout_formatting_layer = AnsiTermLayer { verbose }.with_filter(stdout_env_filter);
+    let subscriber = tracing_subscriber::registry();
 
-    // If a file appender is provided, log to it and stdout, otherwise just log to stdout
-    if let Some(appender) = appender {
-        let (non_blocking, guard) = tracing_appender::non_blocking(appender);
-        guards.push(guard);
-
-        // Force the file logger to log at `debug` level
-        let file_env_filter = EnvFilter::from("magi=debug,network=debug");
-
-        tracing_subscriber::registry()
-            .with(stdout_formatting_layer)
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_ansi(false)
-                    .with_writer(non_blocking)
-                    .with_filter(file_env_filter),
-            )
-            .init();
-    } else {
-        tracing_subscriber::registry()
-            .with(stdout_formatting_layer)
-            .init();
-    }
+    match (appender, json_logs) {
+        (Some(appender), true) => {
+            let (non_blocking, guard) = tracing_appender::non_blocking(appender);
+            guards.push(guard);
+            subscriber
+                .with(tracing_subscriber::fmt::layer().json())
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .with_ansi(false)
+                        .with_writer(non_blocking)
+                        .with_filter(file_env_filter),
+                )
+                .init();
+        }
+        (Some(appender), false) => {
+            let (non_blocking, guard) = tracing_appender::non_blocking(appender);
+            guards.push(guard);
+            subscriber
+                .with(stdout_formatting_layer)
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .with_ansi(false)
+                        .with_writer(non_blocking)
+                        .with_filter(file_env_filter),
+                )
+                .init();
+        }
+        (None, true) => {
+            tracing_subscriber::fmt().json().init();
+        }
+        (None, false) => {
+            subscriber.with(stdout_formatting_layer).init();
+        }
+    };
 
     guards
 }

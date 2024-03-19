@@ -18,12 +18,13 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let sync_mode = cli.sync_mode.clone();
     let verbose = cli.verbose;
+    let json_logs = cli.json_logs;
     let logs_dir = cli.logs_dir.clone();
     let logs_rotation = cli.logs_rotation.clone();
     let checkpoint_hash = cli.checkpoint_hash.clone();
     let config = cli.to_config();
 
-    let _guards = telemetry::init(verbose, logs_dir, logs_rotation);
+    let _guards = telemetry::init(verbose, json_logs, logs_dir, logs_rotation);
     metrics::init()?;
 
     let runner = Runner::from_config(config)
@@ -57,6 +58,8 @@ pub struct Cli {
     jwt_file: Option<PathBuf>,
     #[clap(short = 'v', long)]
     verbose: bool,
+    #[clap(long)]
+    json_logs: bool,
     #[clap(short = 'p', long)]
     rpc_port: Option<u16>,
     #[clap(long)]
