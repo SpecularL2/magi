@@ -273,8 +273,6 @@ fn decode_batches_v0(
             // We're supposed to have inserted empty batches until right before the first batch in the list.
             local_l2_num = batch_first_l2_num - 1;
         }
-        let batch_first_l2_ts =
-            (batch_first_l2_num - safe_l2_num) * config.chain.blocktime + safe_l2_ts;
         // Decode the transaction batches at offset 1.
         for (batch, idx) in batch_list.at(1)?.iter().zip(0u64..) {
             let current_l2_num = batch_first_l2_num + idx;
@@ -305,7 +303,7 @@ fn decode_batches_v0(
             let batch = SpecularBatchV0 {
                 epoch_num,
                 epoch_hash,
-                timestamp: batch_first_l2_ts + idx * config.chain.blocktime,
+                timestamp: safe_l2_ts + (current_l2_num - safe_l2_num) * config.chain.blocktime,
                 transactions,
                 l2_block_number: current_l2_num,
                 l1_inclusion_block: batcher_tx.l1_inclusion_block,
@@ -569,23 +567,23 @@ mod tests {
                 let mut state = state.write().unwrap();
                 state.safe_epoch.number = epoch_num;
                 state.safe_epoch.hash = epoch_hash;
-                state.safe_head.number = first_l2_block_num;
-                state.safe_head.timestamp = timestamp;
+                state.safe_head.number = first_l2_block_num + 1;
+                state.safe_head.timestamp = timestamp + 1 * config.as_ref().chain.blocktime;
             }
 
-            // Test the case where the first sub-batch is already seen.
+            // Test the case where the first two sub-batches is already seen.
 
             let batches = decode_batches(&batcher_tx, &state, &config)?;
 
-            assert_eq!(batches.len(), 2);
+            assert_eq!(batches.len(), 1);
 
             assert_eq!(batches[0].epoch_num, epoch_num);
             assert_eq!(batches[0].epoch_hash, epoch_hash);
             assert_eq!(
                 batches[0].timestamp,
-                timestamp + config.as_ref().chain.blocktime
+                timestamp + 2 * config.as_ref().chain.blocktime
             );
-            assert_eq!(batches[0].l2_block_number, first_l2_block_num + 1);
+            assert_eq!(batches[0].l2_block_number, first_l2_block_num + 2);
             assert_eq!(batches[0].transactions.len(), 1);
             assert_eq!(batches[0].transactions[0].0, encoded_non_oracle_tx);
             assert_eq!(batches[0].l1_inclusion_block, l1_inclusion_block);
