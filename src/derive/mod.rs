@@ -1,5 +1,6 @@
 use std::sync::{mpsc, Arc, RwLock};
 
+use async_trait::async_trait;
 use eyre::Result;
 
 use crate::specular::stages::{
@@ -8,6 +9,7 @@ use crate::specular::stages::{
 use crate::{config::Config, engine::PayloadAttributes};
 
 use self::{
+    async_iterator::AsyncIterator,
     stages::{
         attributes::Attributes,
         batcher_transactions::{BatcherTransactionMessage, BatcherTransactions},
@@ -17,11 +19,12 @@ use self::{
     state::State,
 };
 
+pub mod async_iterator;
 pub mod stages;
 pub mod state;
 
 mod purgeable;
-pub use purgeable::PurgeableIterator;
+pub use purgeable::PurgeableAsyncIterator;
 
 pub struct Pipeline {
     batcher_transaction_sender: mpsc::Sender<BatcherTransactionMessage>,
@@ -29,14 +32,15 @@ pub struct Pipeline {
     pending_attributes: Option<PayloadAttributes>,
 }
 
-impl Iterator for Pipeline {
+#[async_trait]
+impl AsyncIterator for Pipeline {
     type Item = PayloadAttributes;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    async fn next(&mut self) -> Option<Self::Item> {
         if self.pending_attributes.is_some() {
             self.pending_attributes.take()
         } else {
-            self.attributes.next()
+            self.attributes.next().await
         }
     }
 }
@@ -44,7 +48,7 @@ impl Iterator for Pipeline {
 impl Pipeline {
     pub fn new(state: Arc<RwLock<State>>, config: Arc<Config>, seq: u64) -> Result<Self> {
         let (tx, rx) = mpsc::channel();
-        let batch_iter: Box<dyn PurgeableIterator<Item = Batch>> =
+        let batch_iter: Box<dyn PurgeableAsyncIterator<Item = Batch> + Send> =
             if config.chain.meta.enable_full_derivation {
                 let batcher_transactions = BatcherTransactions::new(rx);
                 let channels = Channels::new(batcher_transactions, config.clone());
@@ -71,17 +75,17 @@ impl Pipeline {
         Ok(())
     }
 
-    pub fn peek(&mut self) -> Option<&PayloadAttributes> {
+    pub async fn peek(&mut self) -> Option<&PayloadAttributes> {
         if self.pending_attributes.is_none() {
-            let next_attributes = self.next();
+            let next_attributes = self.next().await;
             self.pending_attributes = next_attributes;
         }
 
         self.pending_attributes.as_ref()
     }
 
-    pub fn purge(&mut self) -> Result<()> {
-        self.attributes.purge();
+    pub async fn purge(&mut self) -> Result<()> {
+        self.attributes.purge().await;
         Ok(())
     }
 }
@@ -159,7 +163,7 @@ mod tests {
 
             state.write().unwrap().update_l1_info(l1_info);
 
-            if let Some(payload) = pipeline.next() {
+            if let Some(payload) = pipeline.next().await {
                 let hashes = get_tx_hashes(&payload.transactions.unwrap());
                 let expected_hashes = get_expected_hashes(config.chain.l2_genesis.number + 1).await;
 

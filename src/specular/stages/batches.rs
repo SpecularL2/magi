@@ -4,15 +4,17 @@ use core::fmt::Debug;
 use std::cmp::Ordering;
 use std::sync::{Arc, RwLock};
 
+use async_trait::async_trait;
 use ethers::types::H256;
 use ethers::utils::rlp::Rlp;
 use eyre::Result;
 
 use crate::common::RawTransaction;
 use crate::config::Config;
+use crate::derive::async_iterator::AsyncIterator;
 use crate::derive::stages::batches::Batch;
 use crate::derive::state::State;
-use crate::derive::PurgeableIterator;
+use crate::derive::PurgeableAsyncIterator;
 
 use super::batcher_transactions::SpecularBatcherTransaction;
 use crate::specular::common::SetL1OracleValuesInput;
@@ -29,26 +31,28 @@ pub struct SpecularBatches<I> {
     config: Arc<Config>,
 }
 
-impl<I> Iterator for SpecularBatches<I>
+#[async_trait]
+impl<I> AsyncIterator for SpecularBatches<I>
 where
-    I: Iterator<Item = SpecularBatcherTransaction>,
+    I: AsyncIterator<Item = SpecularBatcherTransaction> + Send,
 {
     type Item = Batch;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.try_next().unwrap_or_else(|_| {
+    async fn next(&mut self) -> Option<Self::Item> {
+        self.try_next().await.unwrap_or_else(|_| {
             tracing::debug!("Failed to decode batch");
             None
         })
     }
 }
 
-impl<I> PurgeableIterator for SpecularBatches<I>
+#[async_trait]
+impl<I> PurgeableAsyncIterator for SpecularBatches<I>
 where
-    I: PurgeableIterator<Item = SpecularBatcherTransaction>,
+    I: PurgeableAsyncIterator<Item = SpecularBatcherTransaction> + Send,
 {
-    fn purge(&mut self) {
-        self.batcher_transaction_iter.purge();
+    async fn purge(&mut self) {
+        self.batcher_transaction_iter.purge().await;
         self.batches.clear();
     }
 }
@@ -70,13 +74,12 @@ impl<I> SpecularBatches<I> {
 
 impl<I> SpecularBatches<I>
 where
-    I: Iterator<Item = SpecularBatcherTransaction>,
+    I: AsyncIterator<Item = SpecularBatcherTransaction> + Send,
 {
     /// This function tries to decode batches from the next [SpecularBatcherTransaction] and
     /// returns the first valid batch if possible.
-    fn try_next(&mut self) -> Result<Option<Batch>> {
-        let batcher_transaction = self.batcher_transaction_iter.next();
-        if let Some(batcher_transaction) = batcher_transaction {
+    async fn try_next(&mut self) -> Result<Option<Batch>> {
+        if let Some(batcher_transaction) = self.batcher_transaction_iter.next().await {
             let batches = decode_batches(&batcher_transaction, &self.state, &self.config)?;
             batches.into_iter().for_each(|batch| {
                 tracing::debug!(

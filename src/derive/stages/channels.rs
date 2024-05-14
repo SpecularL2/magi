@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
+
 use super::batcher_transactions::{BatcherTransaction, Frame};
-use crate::{config::Config, derive::PurgeableIterator};
+use crate::{
+    config::Config, derive::async_iterator::AsyncIterator, derive::PurgeableAsyncIterator,
+};
 
 pub struct Channels<I> {
     batcher_tx_iter: I,
@@ -15,23 +19,25 @@ pub struct Channels<I> {
     channel_timeout: u64,
 }
 
-impl<I> Iterator for Channels<I>
+#[async_trait]
+impl<I> AsyncIterator for Channels<I>
 where
-    I: Iterator<Item = BatcherTransaction>,
+    I: AsyncIterator<Item = BatcherTransaction> + Send,
 {
     type Item = Channel;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.process_frames()
+    async fn next(&mut self) -> Option<Self::Item> {
+        self.process_frames().await
     }
 }
 
-impl<I> PurgeableIterator for Channels<I>
+#[async_trait]
+impl<I> PurgeableAsyncIterator for Channels<I>
 where
-    I: PurgeableIterator<Item = BatcherTransaction>,
+    I: PurgeableAsyncIterator<Item = BatcherTransaction> + Send,
 {
-    fn purge(&mut self) {
-        self.batcher_tx_iter.purge();
+    async fn purge(&mut self) {
+        self.batcher_tx_iter.purge().await;
         self.pending_channels.clear();
         self.frame_bank.clear();
     }
@@ -51,7 +57,7 @@ impl<I> Channels<I> {
 
 impl<I> Channels<I>
 where
-    I: Iterator<Item = BatcherTransaction>,
+    I: AsyncIterator<Item = BatcherTransaction> + Send,
 {
     /// Pushes a frame into the correct pending channel
     fn push_frame(&mut self, frame: Frame) {
@@ -76,10 +82,8 @@ where
     }
 
     /// Pull the next batcher transaction from the [BatcherTransactions] stage
-    fn fill_bank(&mut self) {
-        let next_batcher_tx = self.batcher_tx_iter.next();
-
-        if let Some(tx) = next_batcher_tx {
+    async fn fill_bank(&mut self) {
+        if let Some(tx) = self.batcher_tx_iter.next().await {
             self.frame_bank.append(&mut tx.frames.to_vec());
         }
     }
@@ -98,8 +102,8 @@ where
     }
 
     /// Processes frames until there are either none left or a channel is ready
-    fn process_frames(&mut self) -> Option<Channel> {
-        self.fill_bank();
+    async fn process_frames(&mut self) -> Option<Channel> {
+        self.fill_bank().await;
 
         while !self.frame_bank.is_empty() {
             // Append the frame to the channel

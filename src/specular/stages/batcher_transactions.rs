@@ -1,11 +1,13 @@
 use std::sync::mpsc;
 
+use async_trait::async_trait;
 use ethers::types::Bytes;
 use eyre::Result;
 use std::collections::VecDeque;
 
+use crate::derive::async_iterator::AsyncIterator;
 use crate::derive::stages::batcher_transactions::BatcherTransactionMessage;
-use crate::derive::PurgeableIterator;
+use crate::derive::PurgeableAsyncIterator;
 use crate::specular::common::{AppendTxBatchInput, APPEND_TX_BATCH_ABI, APPEND_TX_BATCH_SELECTOR};
 
 /// The first stage in Specular's derivation pipeline.
@@ -15,17 +17,19 @@ pub struct SpecularBatcherTransactions {
     transaction_rx: mpsc::Receiver<BatcherTransactionMessage>,
 }
 
-impl Iterator for SpecularBatcherTransactions {
+#[async_trait]
+impl AsyncIterator for SpecularBatcherTransactions {
     type Item = SpecularBatcherTransaction;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    async fn next(&mut self) -> Option<Self::Item> {
         self.process_incoming();
         self.txs.pop_front()
     }
 }
 
-impl PurgeableIterator for SpecularBatcherTransactions {
-    fn purge(&mut self) {
+#[async_trait]
+impl PurgeableAsyncIterator for SpecularBatcherTransactions {
+    async fn purge(&mut self) {
         // drain the channel first
         while self.transaction_rx.try_recv().is_ok() {}
         self.txs.clear();
